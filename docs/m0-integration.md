@@ -6,6 +6,7 @@
 
 - iOS / iPadOS 17+ SwiftUI App 和共享 `PocahontasKit` Swift Package，Swift 6 模式。
 - Ghostty 完整 surface / Metal 集成，madeye passthru IO，字节直通与终端自动应答。
+- App、系统弹窗与键盘、Ghostty 终端统一固定浅色外观；浅色 ANSI 配色，向远端报告浅色模式，没有外观切换。
 - SSH 密码、未加密 / 加密 OpenSSH Ed25519 私钥认证。密钥在后台任务解析，错误 passphrase 明确失败，无认证降级。
 - 首次连接显示 SHA256 指纹，用户确认后写本机 Keychain；已信任服务器的 key 变化直接阻断。
 - 等待 PTY 与 shell 两个成功回复后才开放输入，认证被拒绝立即失败，不等连接超时。
@@ -33,15 +34,15 @@ Ghostty 构建使用 Xcode 26.6（17F113）、Zig 0.15.2，`ReleaseFast`、`sent
 | 验证 | 结果 |
 | --- | --- |
 | 共享 package 与真实 loopback SSH | 11 项通过，0 失败。 |
-| iOS 单元测试 | 3 项通过，0 失败。 |
+| iOS 单元测试 | 4 项通过，0 失败；包含远端外观检测应答。 |
 | iOS UI 端到端测试 | 1 项通过，0 失败；iPhone 17 Pro / iOS 26.5 模拟器。 |
-| 界面截图回放 | iPhone / iPad 两条完整流程通过，生成 46 张原始截图；导出时检查横竖屏方向。 |
+| 界面截图回放 | 系统设为深色时，iPhone / iPad 两条完整流程通过，46 张原始截图均保持浅色；导出时检查横竖屏方向。 |
 | iOS 设备目标编译与链接 | 通过；未签名构建，不代表真机运行验证。 |
 | Ghostty XCFramework | iOS arm64、模拟器 arm64、macOS arm64 / x86_64 切片验证通过。 |
 
 共享 package 测试覆盖连接参数、OpenSSH key 与公钥匹配、错误 passphrase、截断 key、host trust 分支，以及 PTY / shell 成功确认顺序。真实 loopback SSH 测试覆盖密码和加密 Ed25519 认证、非 UTF-8 字节往返、远端 resize、用户拒绝信任、host key 变化与错误密码快速失败。
 
-iOS 测试直接调用实际 Ghostty surface 验证光标位置自动应答、Ctrl-C、中文提交、bracketed paste 和 resize；UI 测试通过真实 Keychain 确认主机身份并连接 fixture，再验证错误密码失败。截图人工检查终端显示与中文排版。
+iOS 测试直接调用实际 Ghostty surface 验证光标位置自动应答、Ctrl-C、中文提交、bracketed paste 和 resize，并验证 DSR 外观查询返回浅色、OSC 11 返回白色背景；UI 测试通过真实 Keychain 确认主机身份并连接 fixture，再验证错误密码失败。截图人工检查终端显示与中文排版。
 
 [界面截图索引](screenshots/ios-m0/README.md) 覆盖连接配置、文件导入、指纹确认、终端与键盘、多行粘贴、认证失败和后台断开等状态。可用 `scripts/capture-screenshots.sh` 重新生成。
 
@@ -55,7 +56,7 @@ iOS 测试直接调用实际 Ghostty surface 验证光标位置自动应答、Ct
 | 长输出压力 | 有明确队列上限与流控，但尚未完成长时间 agent 流式输出和内存曲线测量。 |
 | 会话恢复 | 连接关闭后不自动重放输入；用户可重新连接并手动 attach 远端 tmux。工作区管理、自动重连和多会话是 M1。 |
 | 主机与身份管理 | 只有 quick connect；最近地址 / 用户名存本机 UserDefaults，host trust 存本机 Keychain。完整数据库与持久身份尚未引入。 |
-| 复制与终端交互 | 当前完成输入、粘贴和基本滚动；文本选择复制、完整外接键盘映射、主题字号设置留在 M1。 |
+| 复制与终端交互 | 当前完成输入、粘贴和基本滚动；文本选择复制、完整外接键盘映射、字号设置留在 M1。外观固定为浅色。 |
 | iCloud | 尚未创建 CloudKit container、共享 Keychain group 或同步 UI；M2 按同步设计落实，需正式开发团队签名。 |
 | macOS | 引擎产物包含 macOS；共享 package 已在 macOS 测试，尚无 macOS App。 |
 

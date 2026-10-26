@@ -79,6 +79,27 @@ final class TerminalTests: XCTestCase {
     try? await Task.sleep(for: .milliseconds(50))
     XCTAssertEqual(bytes.value.count, count)
   }
+
+  func testGhosttyReportsLightAppearanceToRemotePrograms() async {
+    let view = TerminalSurfaceView()
+    let bytes = CapturedBytes()
+    view.onPtyOutput = { bytes.append($0) }
+    view.ensureSurface()
+    defer { view.destroySurface() }
+    // Programs may detect either the color scheme (DSR) or background color (OSC 11).
+    view.inject(Data("\u{1b}[?996n\u{1b}]11;?\u{1b}\\".utf8))
+    let lightReport = Data("\u{1b}[?997;2n".utf8)
+    for _ in 0..<100 {
+      if bytes.value.range(of: lightReport) != nil,
+        String(decoding: bytes.value, as: UTF8.self).contains("rgb:ffff/ffff/ffff")
+      {
+        break
+      }
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+    XCTAssertNotNil(bytes.value.range(of: lightReport))
+    XCTAssertTrue(String(decoding: bytes.value, as: UTF8.self).contains("rgb:ffff/ffff/ffff"))
+  }
 }
 
 private final class CapturedBytes: @unchecked Sendable {

@@ -49,7 +49,8 @@ final class TerminalSurfaceView: UIView {
 
   init() {
     super.init(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
-    backgroundColor = UIColor(red: 17 / 255, green: 20 / 255, blue: 25 / 255, alpha: 1)
+    backgroundColor = .white
+    overrideUserInterfaceStyle = .light
     isOpaque = true
     accessibilityIdentifier = "terminal.surface"
     addSubview(textInput)
@@ -87,6 +88,7 @@ final class TerminalSurfaceView: UIView {
     config.io_backend = GHOSTTY_IO_BACKEND_PASSTHRU
     Self.callbacks(&config)
     surface = ghostty_surface_new(GhosttyEngine.shared.app, &config)
+    if let surface { ghostty_surface_set_color_scheme(surface, GHOSTTY_COLOR_SCHEME_LIGHT) }
     lastPixelSize = .zero
     lastScale = 0
     updateVisibility()

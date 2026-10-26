@@ -43,6 +43,7 @@ targets:
       properties:
         CFBundleDisplayName: pocahontas
         UILaunchScreen: {}
+        UIUserInterfaceStyle: Light
         UIApplicationSupportsIndirectInputEvents: true
         NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
         UISupportedInterfaceOrientations:

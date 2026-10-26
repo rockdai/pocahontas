@@ -38,6 +38,8 @@ for DEVICE in iphone ipad; do
   SIMULATOR_ID="$(xcrun simctl create "pocahontas-screenshots-$DEVICE" "$DEVICE_TYPE" "$RUNTIME")"
   xcrun simctl boot "$SIMULATOR_ID"
   xcrun simctl bootstatus "$SIMULATOR_ID" -b > "$RUN_DIR/$DEVICE-boot.log"
+  # Verify the app, terminal, sheets and keyboards stay light even on a dark system.
+  xcrun simctl ui "$SIMULATOR_ID" appearance dark
   xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' \
     --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
   echo "Capturing $DEVICE; log: $RUN_DIR/$DEVICE.log"

@@ -16,6 +16,7 @@ final class TerminalTextInputView: UITextView, UITextViewDelegate {
     backgroundColor = .clear
     textColor = .clear
     tintColor = .clear
+    keyboardAppearance = .light
     isScrollEnabled = false
     isAccessibilityElement = false
     autocorrectionType = .no

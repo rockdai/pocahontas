@@ -9,8 +9,8 @@ struct PocahontasApp: App {
   var body: some Scene {
     WindowGroup {
       ConnectionView(terminal: terminal)
-        .preferredColorScheme(.dark)
-        .tint(Color(red: 0.64, green: 0.9, blue: 0.69))
+        .preferredColorScheme(.light)
+        .tint(AppAppearance.accent)
         .onChange(of: scenePhase) { _, phase in
           GhosttyEngine.shared.setBackgrounded(phase != .active)
           if phase == .background { terminal.suspend() }
@@ -105,7 +105,7 @@ struct ConnectionView: View {
       .navigationTitle("pocahontas")
       .overlay {
         if scenePhase != .active {
-          Color(red: 17 / 255, green: 20 / 255, blue: 25 / 255)
+          AppAppearance.background
             .overlay(Label("pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
         }
       }
@@ -145,19 +145,19 @@ struct TerminalScreen: View {
     NavigationStack {
       VStack(spacing: 0) {
         HStack(spacing: 8) {
-          Circle().fill(terminal.state == .ready ? Color.green : Color.orange).frame(
+          Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning).frame(
             width: 7, height: 7)
           Text(status).font(.caption).accessibilityIdentifier("terminal.status")
           Spacer()
         }.padding(.horizontal).padding(.vertical, 10)
         if case .failed(let message) = terminal.state {
-          Text(message).font(.callout).foregroundStyle(.orange).padding()
+          Text(message).font(.callout).foregroundStyle(AppAppearance.warning).padding()
             .accessibilityIdentifier("terminal.error")
         }
         TerminalHost(surface: terminal.surface)
         accessory
       }
-      .background(Color(red: 17 / 255, green: 20 / 255, blue: 25 / 255))
+      .background(AppAppearance.background)
       .navigationTitle(terminal.title).navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
@@ -174,7 +174,7 @@ struct TerminalScreen: View {
       }
       .overlay {
         if scenePhase != .active {
-          Color(red: 17 / 255, green: 20 / 255, blue: 25 / 255)
+          AppAppearance.background
             .overlay(Label("pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
         }
       }
@@ -229,9 +229,9 @@ struct TerminalScreen: View {
         key("Esc", .escape)
         key("Tab", .tab)
         Button("Ctrl") { terminal.relay.toggle(.ctrl) }
-          .tint(terminal.relay.sticky.contains(.ctrl) ? .green : .gray)
+          .tint(terminal.relay.sticky.contains(.ctrl) ? AppAppearance.accent : AppAppearance.inactiveKey)
         Button("Alt") { terminal.relay.toggle(.alt) }
-          .tint(terminal.relay.sticky.contains(.alt) ? .green : .gray)
+          .tint(terminal.relay.sticky.contains(.alt) ? AppAppearance.accent : AppAppearance.inactiveKey)
         key("↑", .up)
         key("↓", .down)
         key("←", .left)

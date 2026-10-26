@@ -20,6 +20,7 @@ final class GhosttyEngine {
       fatalError("Unable to create terminal engine")
     }
     self.app = app
+    ghostty_app_set_color_scheme(app, GHOSTTY_COLOR_SCHEME_LIGHT)
     ghostty_app_set_focus(app, true)
     let link = CADisplayLink(target: self, selector: #selector(tick))
     link.add(to: .main, forMode: .common)

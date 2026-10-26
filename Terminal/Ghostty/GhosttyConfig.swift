@@ -17,11 +17,29 @@ final class GhosttyConfig {
       window-padding-y = 0
       font-codepoint-map = U+3000-U+30FF,U+31F0-U+31FF=Hiragino Sans
       font-codepoint-map = U+1F000-U+1FAFF=Apple Color Emoji
-      background = #111419
-      foreground = #e4e7ec
-      cursor-color = #a3e6b1
-      selection-background = #344556
-      selection-foreground = #ffffff
+      background = #ffffff
+      foreground = #24292f
+      cursor-color = #1a7f37
+      cursor-text = #ffffff
+      selection-background = #cce8d3
+      selection-foreground = #24292f
+      minimum-contrast = 3
+      palette = 0=#24292f
+      palette = 1=#cf222e
+      palette = 2=#116329
+      palette = 3=#9a6700
+      palette = 4=#0969da
+      palette = 5=#8250df
+      palette = 6=#1b7c83
+      palette = 7=#d0d7de
+      palette = 8=#57606a
+      palette = 9=#a40e26
+      palette = 10=#1a7f37
+      palette = 11=#7d4e00
+      palette = 12=#0550ae
+      palette = 13=#6639ba
+      palette = 14=#0a6c74
+      palette = 15=#ffffff
       """
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "pocahontas-ghostty.conf")
