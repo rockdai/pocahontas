@@ -1,0 +1,99 @@
+name: pocahontas
+options:
+  bundleIdPrefix: com.rockdai
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+packages:
+  PocahontasKit:
+    path: Packages/PocahontasKit
+targets:
+  pocahontas:
+    type: application
+    platform: iOS
+    sources: [Apps/iOS, Terminal]
+    dependencies:
+      - package: PocahontasKit
+      - framework: Frameworks/GhosttyKit.xcframework
+        embed: false
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: CoreText.framework
+      - sdk: CoreGraphics.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas
+        CODE_SIGN_ENTITLEMENTS: Apps/iOS/Pocahontas.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Apps/iOS/Simulator.entitlements
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        OTHER_LDFLAGS: [-ObjC, -lstdc++]
+        ENABLE_BITCODE: false
+        LM_SKIP_METADATA_EXTRACTION: YES
+    info:
+      path: Apps/iOS/Info.plist
+      properties:
+        CFBundleDisplayName: pocahontas
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+  PocahontasAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests/iOS]
+    dependencies:
+      - target: pocahontas
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/pocahontas.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/pocahontas"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        LM_SKIP_METADATA_EXTRACTION: YES
+  PocahontasUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/UI]
+    dependencies:
+      - target: pocahontas
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: pocahontas
+        LM_SKIP_METADATA_EXTRACTION: YES
+  PocahontasScreenshotTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/Screenshots]
+    dependencies:
+      - target: pocahontas
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: pocahontas
+        LM_SKIP_METADATA_EXTRACTION: YES
+schemes:
+  pocahontas:
+    build:
+      targets:
+        pocahontas: all
+    test:
+      targets: [PocahontasAppTests, PocahontasUITests]
+  screenshots:
+    build:
+      targets:
+        pocahontas: all
+    test:
+      targets: [PocahontasScreenshotTests]
