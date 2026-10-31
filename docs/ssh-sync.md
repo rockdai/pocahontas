@@ -147,6 +147,8 @@ Keychain 查询使用对应 ownerScope，避免应用将旧账号凭据绑定给
 
 Apple 的 CKSyncEngine 示例适合作为同步调度与测试参考；主机冲突和双存储引用是本项目自己的业务规则。上线前需用真实签名与设备验证，不能用模拟器单机成功替代跨平台验收。
 
-## 当前 M0 的平台边界（2026-10-31）
+## 当前实现（2026-11-01）
 
-iPhone / iPad 与原生 Mac 已共用 SSH、认证和会话控制。当前仍只保存最近连接参数和本机 host trust，不保存或同步私钥。Mac 的本机 trust pins 使用 login Keychain，iOS 使用 Data Protection Keychain；两者都不同步。这是本机服务器信任存储，与上文设计的同步凭据保险库分开。同步凭据仍须使用正式签名、共享访问组和 Data Protection Keychain，不以普通文件或 login Keychain 代替 iCloud 同步。
+连接库、Core Data 事务、CKSyncEngine、Keychain 凭据版本和三端管理界面已落地。CloudKit 容器授权与跨设备真机验收尚未完成；请按 [iCloud 构建与验收](icloud-setup.md) 配置与验证，不把模拟器的本地 Keychain 测试当作跨设备同步证明。
+
+本轮只实现主机与 Ed25519 身份；WorkspaceBookmark、保存 passphrase、停止共享及历史 revision 清理仍在后续范围。Core Data 当前为每个账号存储一个事务 snapshot，适用于规模较小的个人连接库。独立本机库的凭据用 App 默认 Keychain group，账号库中的凭据用共同 group；所有认证秘密都用 Data Protection Keychain。仅 Mac 本机 host trust 继续使用 login Keychain。

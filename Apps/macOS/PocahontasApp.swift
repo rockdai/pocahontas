@@ -27,13 +27,26 @@ struct PocahontasMacApp: App {
 final class MacApplicationDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.appearance = NSAppearance(named: .aqua)
+    if LibraryServices.shared.library?.cloudConfigured == true {
+      NSApp.registerForRemoteNotifications()
+    }
+    Task { await LibraryServices.shared.start() }
   }
   func applicationDidBecomeActive(_ notification: Notification) {
     GhosttyEngine.shared.setBackgrounded(false)
+    Task {
+      await LibraryServices.shared.library?.checkAccount()
+      await LibraryServices.shared.library?.syncNow()
+    }
   }
   func applicationDidResignActive(_ notification: Notification) {
     // Losing focus is not iOS background suspension; SSH continues in every window.
     GhosttyEngine.shared.setBackgrounded(true)
+  }
+  func application(
+    _ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]
+  ) {
+    Task { await LibraryServices.shared.library?.syncNow() }
   }
 }
 
@@ -51,6 +64,10 @@ struct MacConnectionWindow: View {
     .frame(minWidth: 640, minHeight: 560)
     .background(AppAppearance.background)
     .background(WindowLifetime(onClose: { terminal.disconnect() }))
+    .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
+      terminal.suspend(
+        reason: "The connection library changed. Connect again using the current account.")
+    }
     .onReceive(
       NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)
     ) { _ in
@@ -73,6 +90,8 @@ private struct MacConnectionForm: View {
   @State private var useKey = false
   @State private var importing = false
   @State private var importError: String?
+  @State private var showingLibrary = false
+  @State private var pendingSavedConnection: PendingSavedConnection?
 
   var body: some View {
     ScrollView {
@@ -116,7 +135,7 @@ private struct MacConnectionForm: View {
           }
         }.formStyle(.grouped).scrollDisabled(true).fixedSize(horizontal: false, vertical: true)
         Text(
-          "Passwords, private keys and passphrases stay in memory for this connection. This preview saves only the server address and username on this Mac."
+          "Quick Connect uses credentials once. Open Saved Connections to save a server or manage iCloud sync."
         )
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         HStack {
@@ -133,6 +152,37 @@ private struct MacConnectionForm: View {
         .frame(maxWidth: .infinity)
     }
     .navigationTitle("pocahontas")
+    .toolbar {
+      Button("Saved Connections", systemImage: "rectangle.stack") { showingLibrary = true }
+        .accessibilityIdentifier("library.open")
+    }
+    .sheet(
+      isPresented: $showingLibrary,
+      onDismiss: {
+        guard let pending = pendingSavedConnection else { return }
+        pendingSavedConnection = nil
+        guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
+          return
+        }
+        Task {
+          guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
+            return
+          }
+          await terminal.connectSaved(pending.binding, authentication: pending.authentication)
+        }
+      }
+    ) {
+      if let library = LibraryServices.shared.library {
+        ConnectionLibraryView(library: library) { binding, auth in
+          pendingSavedConnection = PendingSavedConnection(
+            binding: binding, authentication: auth,
+            generation: library.accountGeneration)
+          showingLibrary = false
+        }
+      } else {
+        Text(LibraryServices.shared.startupError ?? "Library unavailable").padding()
+      }
+    }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .text]) { result in
       do {
         let file = try result.get()

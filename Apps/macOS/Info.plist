@@ -26,5 +26,9 @@
 	<string>NSApplication</string>
 	<key>NSRequiresAquaSystemAppearance</key>
 	<true/>
+	<key>PocahontasCloudEnabled</key>
+	<string>$(POCAHONTAS_CLOUD_ENABLED)</string>
+	<key>PocahontasKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)com.rockdai.pocahontas.shared</string>
 </dict>
 </plist>

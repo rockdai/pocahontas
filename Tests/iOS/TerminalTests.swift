@@ -5,6 +5,14 @@ import XCTest
 
 @MainActor
 final class TerminalTests: XCTestCase {
+  func testSavedConnectionRechecksAccountBeforeStartingSSH() async {
+    let terminal = TerminalController()
+    await terminal.connect(
+      host: "127.0.0.1", port: "22", username: "fixture",
+      authentication: .password("test-only"), stillAuthorized: { false })
+    guard case .failed = terminal.state else { return XCTFail("Account change must block SSH") }
+    XCTAssertFalse(terminal.surface.hasLiveSurface)
+  }
   func testCompositionCommitsExactlyOnceAndDoesNotDeleteRemoteText() {
     let view = TerminalTextInputView()
     var commits: [String] = []

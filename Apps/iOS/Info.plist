@@ -22,8 +22,16 @@
 	<string>1</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>pocahontas connects to your SSH development machines on the local network.</string>
+	<key>PocahontasCloudEnabled</key>
+	<string>$(POCAHONTAS_CLOUD_ENABLED)</string>
+	<key>PocahontasKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)com.rockdai.pocahontas.shared</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

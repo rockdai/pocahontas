@@ -25,7 +25,10 @@ final class TerminalController {
     surface.onPasteRequest = { [weak self] in self?.requestPaste($0) }
   }
 
-  func connect(host: String, port: String, username: String, authentication: SSHAuthentication)
+  func connect(
+    host: String, port: String, username: String, authentication: SSHAuthentication,
+    stillAuthorized: () -> Bool = { true }
+  )
     async
   {
     disconnect()
@@ -39,6 +42,7 @@ final class TerminalController {
         try SSHCredentials(authentication: authentication)
       }.value
       guard generation == token else { return }
+      guard stillAuthorized() else { throw LibraryError.accountChanged }
       surface.ensureSurface()
       guard surface.hasLiveSurface else { throw TerminalError.creationFailed }
       let size = surface.gridSize

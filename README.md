@@ -14,7 +14,11 @@ App 与终端统一使用固定浅色外观，不跟随系统深色模式，也�
 
 [浏览 iPhone / iPad 界面截图](docs/screenshots/ios-m0/README.md) · [浏览 Mac 界面截图](docs/screenshots/macos-m0/README.md)：连接配置、文件导入、主机指纹、终端、键盘、多行粘贴和错误提示，包含横屏与竖屏。
 
-原型仅保存本机最近一次连接的地址、端口、用户名和已确认的服务器指纹；密码和私钥只保留在当前连接内存中。Mac 版提供原生窗口、独立并行连接、鼠标选区、⌘C / ⌘V 与中文输入；切换到其他 App 不会断开 SSH，关闭窗口或系统睡眠时断开。多主机连接库、身份持久化、自动 tmux 工作区与 iCloud 同步尚未实现。当前可在远端手动运行 tmux，返回 App 后重新连接并 attach。
+已加入三端共用的本地连接库、SSH 身份管理、CloudKit 配置同步与逐项选择的 iCloud Keychain 凭据存储。快速连接仍只使用一次性凭据；已保存连接可在离线时使用。同步实现包括持久 outbox、冲突审阅、删除标记和账号隔离。**当前开发 profile 尚未关联目标 iCloud container，真实跨设备同步仍待签名配置与真机验收**，详见 [iCloud 构建与验收](docs/icloud-setup.md)。
+
+Mac 版提供原生窗口、独立并行连接、鼠标选区、⌘C / ⌘V 与中文输入；切换到其他 App 不会断开 SSH，关闭窗口或系统睡眠时断开。自动 tmux 工作区尚未实现，目前可在远端手动运行 tmux，返回 App 后重新连接并 attach。
+
+[浏览连接库、SSH 身份与 iCloud 设置的三端截图](docs/screenshots/library/README.md)。
 
 ## 构建
 
@@ -33,6 +37,8 @@ open pocahontas.xcodeproj
 `project.yml` 是工程配置源；重新生成工程使用 `scripts/generate-project.sh`，该脚本同时将已提交的 Swift package 版本锁复制到 Xcode。Ghostty 构建产物位于 `Frameworks/`，不入库；构建脚本只修改项目内的 Zig 缓存。
 
 ## 验证
+
+iCloud 联调使用 `pocahontas-iCloud` 或 `pocahontas-macOS-iCloud` scheme（`CloudDebug`），两端需使用同一开发团队、container 和共享 Keychain group。普通 Mac Debug 不具备 Data Protection Keychain 凭据权限，因此可保存配置，连接时输入密码；正式签名构建才启用持久凭据。具体步骤见 [iCloud 构建说明](docs/icloud-setup.md)。
 
 共享逻辑测试：
 

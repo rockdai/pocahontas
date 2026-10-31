@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 @main
 struct PocahontasApp: App {
+  @UIApplicationDelegateAdaptor(CloudApplicationDelegate.self) private var delegate
   @State private var terminal = TerminalController()
   @Environment(\.scenePhase) private var scenePhase
   var body: some Scene {
@@ -11,10 +12,42 @@ struct PocahontasApp: App {
       ConnectionView(terminal: terminal)
         .preferredColorScheme(.light)
         .tint(AppAppearance.accent)
+        .task { await LibraryServices.shared.start() }
+        .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
+          terminal.suspend(
+            reason: "The connection library changed. Connect again using the current account.")
+        }
         .onChange(of: scenePhase) { _, phase in
           GhosttyEngine.shared.setBackgrounded(phase != .active)
           if phase == .background { terminal.suspend() }
+          if phase == .active {
+            Task {
+              await LibraryServices.shared.library?.checkAccount()
+              await LibraryServices.shared.library?.syncNow()
+            }
+          }
         }
+    }
+  }
+}
+
+final class CloudApplicationDelegate: NSObject, UIApplicationDelegate {
+  func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    if LibraryServices.shared.library?.cloudConfigured == true {
+      application.registerForRemoteNotifications()
+    }
+    return true
+  }
+  func application(
+    _ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    Task {
+      await LibraryServices.shared.library?.syncNow()
+      completionHandler(.newData)
     }
   }
 }
@@ -31,6 +64,8 @@ struct ConnectionView: View {
   @State private var passphrase = ""
   @State private var importing = false
   @State private var importError: String?
+  @State private var showingLibrary = false
+  @State private var pendingSavedConnection: PendingSavedConnection?
 
   var body: some View {
     NavigationStack {
@@ -76,7 +111,7 @@ struct ConnectionView: View {
           Text("Authentication")
         } footer: {
           Text(
-            "Passwords, private keys and passphrases stay in memory for this connection. This preview saves only the server address and username on this device."
+            "Quick Connect uses credentials once. Open Saved Connections to save a server or manage iCloud sync."
           )
         }.textInputAutocapitalization(.never).autocorrectionDisabled()
         Section {
@@ -103,6 +138,39 @@ struct ConnectionView: View {
         }
       }
       .navigationTitle("pocahontas")
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Saved Connections", systemImage: "rectangle.stack") { showingLibrary = true }
+            .accessibilityIdentifier("library.open")
+        }
+      }
+      .sheet(
+        isPresented: $showingLibrary,
+        onDismiss: {
+          guard let pending = pendingSavedConnection else { return }
+          pendingSavedConnection = nil
+          guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
+            return
+          }
+          Task {
+            guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
+              return
+            }
+            await terminal.connectSaved(pending.binding, authentication: pending.authentication)
+          }
+        }
+      ) {
+        if let library = LibraryServices.shared.library {
+          ConnectionLibraryView(library: library) { binding, auth in
+            pendingSavedConnection = PendingSavedConnection(
+              binding: binding, authentication: auth,
+              generation: library.accountGeneration)
+            showingLibrary = false
+          }
+        } else {
+          Text(LibraryServices.shared.startupError ?? "Library unavailable").padding()
+        }
+      }
       .overlay {
         if scenePhase != .active {
           AppAppearance.background
@@ -145,8 +213,9 @@ struct TerminalScreen: View {
     NavigationStack {
       VStack(spacing: 0) {
         HStack(spacing: 8) {
-          Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning).frame(
-            width: 7, height: 7)
+          Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning)
+            .frame(
+              width: 7, height: 7)
           Text(status).font(.caption).accessibilityIdentifier("terminal.status")
           Spacer()
         }.padding(.horizontal).padding(.vertical, 10)
@@ -229,9 +298,12 @@ struct TerminalScreen: View {
         key("Esc", .escape)
         key("Tab", .tab)
         Button("Ctrl") { terminal.relay.toggle(.ctrl) }
-          .tint(terminal.relay.sticky.contains(.ctrl) ? AppAppearance.accent : AppAppearance.inactiveKey)
+          .tint(
+            terminal.relay.sticky.contains(.ctrl) ? AppAppearance.accent : AppAppearance.inactiveKey
+          )
         Button("Alt") { terminal.relay.toggle(.alt) }
-          .tint(terminal.relay.sticky.contains(.alt) ? AppAppearance.accent : AppAppearance.inactiveKey)
+          .tint(
+            terminal.relay.sticky.contains(.alt) ? AppAppearance.accent : AppAppearance.inactiveKey)
         key("↑", .up)
         key("↓", .down)
         key("←", .left)

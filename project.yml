@@ -5,13 +5,27 @@ options:
     iOS: "17.0"
     macOS: "14.0"
   createIntermediateGroups: true
+configs:
+  Debug: debug
+  CloudDebug: debug
+  Release: release
 settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
+    POCAHONTAS_CLOUD_ENABLED: "NO"
+    POCAHONTAS_CLOUD_ENVIRONMENT: Development
+    POCAHONTAS_PUSH_ENVIRONMENT: development
     "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+  configs:
+    CloudDebug:
+      POCAHONTAS_CLOUD_ENABLED: "YES"
+    Release:
+      POCAHONTAS_CLOUD_ENABLED: "YES"
+      POCAHONTAS_CLOUD_ENVIRONMENT: Production
+      POCAHONTAS_PUSH_ENVIRONMENT: production
 packages:
   PocahontasKit:
     path: Packages/PocahontasKit
@@ -39,11 +53,19 @@ targets:
         OTHER_LDFLAGS: [-ObjC, -lstdc++]
         ENABLE_BITCODE: false
         LM_SKIP_METADATA_EXTRACTION: YES
+      configs:
+        CloudDebug:
+          CODE_SIGN_ENTITLEMENTS: Apps/iOS/Cloud.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Apps/iOS/Cloud.entitlements
     info:
       path: Apps/iOS/Info.plist
       properties:
         CFBundleDisplayName: pocahontas
+        PocahontasCloudEnabled: "$(POCAHONTAS_CLOUD_ENABLED)"
+        PocahontasKeychainGroup: "$(AppIdentifierPrefix)com.rockdai.pocahontas.shared"
         UILaunchScreen: {}
+        UIBackgroundModes: [remote-notification]
         UIUserInterfaceStyle: Light
         UIApplicationSupportsIndirectInputEvents: true
         NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
@@ -79,10 +101,17 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY: "-"
+        CloudDebug:
+          CODE_SIGN_IDENTITY: Apple Development
+          CODE_SIGN_ENTITLEMENTS: Apps/macOS/Cloud.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Apps/macOS/Cloud.entitlements
     info:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleDisplayName: pocahontas
+        PocahontasCloudEnabled: "$(POCAHONTAS_CLOUD_ENABLED)"
+        PocahontasKeychainGroup: "$(AppIdentifierPrefix)com.rockdai.pocahontas.shared"
         NSPrincipalClass: NSApplication
         NSRequiresAquaSystemAppearance: true
         NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
@@ -145,7 +174,27 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_TARGET_NAME: pocahontas
         LM_SKIP_METADATA_EXTRACTION: YES
+  PocahontasLibraryScreenshotTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Tests/LibraryScreenshots
+      - path: Packages/PocahontasKit/Tests/PocahontasKitTests/Fixtures/ed25519_plain
+        buildPhase: resources
+    dependencies:
+      - target: pocahontas
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: pocahontas
+        LM_SKIP_METADATA_EXTRACTION: YES
 schemes:
+  library-screenshots:
+    build:
+      targets:
+        pocahontas: all
+    test:
+      targets: [PocahontasLibraryScreenshotTests]
   pocahontas-macOS:
     build:
       targets:
@@ -166,3 +215,19 @@ schemes:
         pocahontas: all
     test:
       targets: [PocahontasScreenshotTests]
+  pocahontas-iCloud:
+    build:
+      targets:
+        pocahontas: all
+    run:
+      config: CloudDebug
+    archive:
+      config: Release
+  pocahontas-macOS-iCloud:
+    build:
+      targets:
+        pocahontas-macOS: all
+    run:
+      config: CloudDebug
+    archive:
+      config: Release
