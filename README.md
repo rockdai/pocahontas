@@ -4,21 +4,21 @@
   <img src="assets/logo/pocahontas.png" width="160" alt="pocahontas — 白底黑色 Contrail One 大写 P Logo">
 </p>
 
-Terminal made for coding agents，首先支持 iOS / iPadOS，后续支持原生 macOS。
+Terminal made for coding agents，首版同时支持 iPhone、iPad 和原生 macOS。
 
 通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，在用户开启同步后跨 Apple 设备共享。
 
-当前已有 M0 iOS 原型：Ghostty / Metal 终端、SSH 密码与加密 OpenSSH Ed25519 私钥认证、首次连接指纹确认、主机密钥变化阻断，以及中文输入、快捷键、粘贴和终端尺寸同步。
+当前已有三平台 M0 原型：Ghostty / Metal 终端、SSH 密码与加密 OpenSSH Ed25519 私钥认证、首次连接指纹确认、主机密钥变化阻断，以及中文输入、快捷键、粘贴和终端尺寸同步。
 
 App 与终端统一使用固定浅色外观，不跟随系统深色模式，也不提供外观切换。终端使用白底、深色文字和适配浅色背景的 ANSI 配色，并向支持外观检测的远端程序报告浅色模式。
 
-[浏览 iPhone / iPad 界面截图](docs/screenshots/ios-m0/README.md)：连接配置、文件导入、主机指纹、终端、键盘、多行粘贴和错误提示，包含横屏与竖屏。
+[浏览 iPhone / iPad 界面截图](docs/screenshots/ios-m0/README.md) · [浏览 Mac 界面截图](docs/screenshots/macos-m0/README.md)：连接配置、文件导入、主机指纹、终端、键盘、多行粘贴和错误提示，包含横屏与竖屏。
 
-原型仅保存本机最近一次连接的地址、端口、用户名和已确认的服务器指纹；密码和私钥只保留在当前连接内存中。多主机连接库、身份持久化、自动 tmux 工作区、iCloud 同步与 macOS UI 尚未实现。当前可在远端手动运行 tmux，返回 App 后重新连接并 attach。
+原型仅保存本机最近一次连接的地址、端口、用户名和已确认的服务器指纹；密码和私钥只保留在当前连接内存中。Mac 版提供原生窗口、独立并行连接、鼠标选区、⌘C / ⌘V 与中文输入；切换到其他 App 不会断开 SSH，关闭窗口或系统睡眠时断开。多主机连接库、身份持久化、自动 tmux 工作区与 iCloud 同步尚未实现。当前可在远端手动运行 tmux，返回 App 后重新连接并 attach。
 
 ## 构建
 
-已验证工具链：Xcode 26.6、Swift 6.3.3、Homebrew `zig@0.15` 0.15.2。最低系统版本 iOS 17；模拟器构建为 arm64。
+已验证工具链：Xcode 26.6、Swift 6.3.3、Homebrew `zig@0.15` 0.15.2。最低系统版本 iOS / iPadOS 17、macOS 14；模拟器构建为 arm64。
 
 ```sh
 brew install zig@0.15 xcodegen jq
@@ -28,7 +28,7 @@ scripts/generate-project.sh
 open pocahontas.xcodeproj
 ```
 
-在 Xcode 选择 `pocahontas` scheme 和模拟器运行。模拟器使用专用 ad-hoc 签名 entitlement 访问真实 Keychain，无需设置开发团队。真机需在 Signing & Capabilities 中选择自己的团队。不要用 `CODE_SIGNING_ALLOWED=NO` 运行 Keychain 集成测试。
+在 Xcode 选择 `pocahontas` scheme 运行 iPhone / iPad，选择 `pocahontas-macOS` scheme 和 My Mac 运行原生 Mac App。Mac Debug 使用本地 ad-hoc 签名；发布构建需选择开发团队及正式签名。Mac 主机指纹保存在本机 login Keychain（仅本机信任，不同步）；正式签名保证应用身份在升级后保持稳定。模拟器使用专用 ad-hoc 签名 entitlement 访问真实 Keychain，无需设置开发团队。真机需在 Signing & Capabilities 中选择自己的团队。不要用 `CODE_SIGNING_ALLOWED=NO` 运行 Keychain 集成测试。
 
 `project.yml` 是工程配置源；重新生成工程使用 `scripts/generate-project.sh`，该脚本同时将已提交的 Swift package 版本锁复制到 Xcode。Ghostty 构建产物位于 `Frameworks/`，不入库；构建脚本只修改项目内的 Zig 缓存。
 
@@ -60,6 +60,14 @@ xcodebuild -project pocahontas.xcodeproj -scheme pocahontas \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
   -parallel-testing-enabled NO -disableAutomaticPackageResolution test
 ```
+
+Mac 原生终端、Keychain 与 UI 测试入口（UI 自动化可用时导出 16 张基础截图）：
+
+```sh
+scripts/test-macos.sh
+```
+
+该脚本在随机 loopback 端口运行专用 fixture；每次新端点都验证首次信任，不清除已有主机指纹。本机原生单元测试通过，Mac XCUITest 启动自动化超时，本轮桌面截图改由 Computer Use 操作真实窗口保存；详见截图索引。
 
 ## 设计与集成记录
 

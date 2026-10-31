@@ -1,6 +1,6 @@
 # SSH 连接库与 iCloud 同步
 
-设计日期：2026-10-25。适用范围为同一用户在 iOS / iPadOS 与未来原生 macOS App 之间共享 SSH 连接资料。
+设计日期：2026-10-25。适用范围为同一用户在 iOS / iPadOS 与本次首版原生 macOS App 之间共享 SSH 连接资料。
 
 推荐 **本地优先的连接库 + CloudKit private database 同步配置 + iCloud Keychain 同步可导出的凭据**。用户只面对一个连接库，无需注册 pocahontas 账号。用户可完全关闭同步，也可只同步配置、将特定私钥留在本机。
 
@@ -134,7 +134,7 @@ Keychain 查询使用对应 ownerScope，避免应用将旧账号凭据绑定给
 
 以下必须进入同步集成测试，不能只靠模拟数据或一次单设备写入证明成功：
 
-1. iPhone 创建主机与同步身份，另一台 iOS 设备及 macOS 验证宿主收到后能选中同一身份完成认证；只在新设备首次连接确认 host key。
+1. iPhone 创建主机与同步身份，另一台 iOS 设备及 macOS App收到后能选中同一身份完成认证；只在新设备首次连接确认 host key。
 2. 两设备离线修改不同字段可以合并；并发修改 endpoint / authentication 进入可见冲突，绝不静默组合。
 3. 设备 A 删除主机，离线设备 B 修改旧主机再上线，删除不被复活；共享身份仍供其他主机使用。
 4. 配置先到、凭据先到、凭据一直不到、设备锁定分别有正确状态；均不会自动降级认证或删除引用。
@@ -146,3 +146,7 @@ Keychain 查询使用对应 ownerScope，避免应用将旧账号凭据绑定给
 10. Debug / release 的签名、共同 access group、CloudKit production schema 和真实设备通知链路均验证通过。
 
 Apple 的 CKSyncEngine 示例适合作为同步调度与测试参考；主机冲突和双存储引用是本项目自己的业务规则。上线前需用真实签名与设备验证，不能用模拟器单机成功替代跨平台验收。
+
+## 当前 M0 的平台边界（2026-10-31）
+
+iPhone / iPad 与原生 Mac 已共用 SSH、认证和会话控制。当前仍只保存最近连接参数和本机 host trust，不保存或同步私钥。Mac 的本机 trust pins 使用 login Keychain，iOS 使用 Data Protection Keychain；两者都不同步。这是本机服务器信任存储，与上文设计的同步凭据保险库分开。同步凭据仍须使用正式签名、共享访问组和 Data Protection Keychain，不以普通文件或 login Keychain 代替 iCloud 同步。

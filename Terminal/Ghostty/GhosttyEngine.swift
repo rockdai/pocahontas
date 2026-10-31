@@ -1,12 +1,19 @@
 import GhosttyKit
-import UIKit
+
+#if os(iOS)
+  import UIKit
+#else
+  import AppKit
+#endif
 
 @MainActor
 final class GhosttyEngine {
   static let shared = GhosttyEngine()
   let app: ghostty_app_t
   private let config: GhosttyConfig
-  private var displayLink: CADisplayLink?
+  #if os(iOS)
+    private var displayLink: CADisplayLink?
+  #endif
   private var visibleSurfaces = 0
   private var backgrounded = false
 
@@ -22,10 +29,12 @@ final class GhosttyEngine {
     self.app = app
     ghostty_app_set_color_scheme(app, GHOSTTY_COLOR_SCHEME_LIGHT)
     ghostty_app_set_focus(app, true)
-    let link = CADisplayLink(target: self, selector: #selector(tick))
-    link.add(to: .main, forMode: .common)
-    link.isPaused = true
-    displayLink = link
+    #if os(iOS)
+      let link = CADisplayLink(target: self, selector: #selector(tick))
+      link.add(to: .main, forMode: .common)
+      link.isPaused = true
+      displayLink = link
+    #endif
   }
 
   @objc private func tick() { ghostty_app_tick(app) }
@@ -41,13 +50,21 @@ final class GhosttyEngine {
     updateDisplayLink()
   }
 
-  private func updateDisplayLink() { displayLink?.isPaused = backgrounded || visibleSurfaces == 0 }
+  private func updateDisplayLink() {
+    #if os(iOS)
+      displayLink?.isPaused = backgrounded || visibleSurfaces == 0
+    #endif
+  }
 
   // C callbacks are declared outside MainActor isolation, including renderer-thread wakeups.
   private nonisolated static func runtimeConfiguration() -> ghostty_runtime_config_s {
     .init(
       userdata: nil, supports_selection_clipboard: false,
-      wakeup_cb: { _ in }, action_cb: { _, _, _ in false },
+      wakeup_cb: { _ in
+        #if os(macOS)
+          DispatchQueue.main.async { GhosttyEngine.shared.tick() }
+        #endif
+      }, action_cb: { _, _, _ in false },
       read_clipboard_cb: { _, _, _ in false },
       confirm_read_clipboard_cb: { _, _, _, _ in },
       write_clipboard_cb: { _, _, _, _, _ in }, close_surface_cb: { _, _ in })

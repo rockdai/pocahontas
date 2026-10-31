@@ -1,6 +1,6 @@
 # M0 界面截图
 
-2026-10-26 · iOS / iPadOS 26.5 · iPhone 17 Pro 与 iPad Pro 11-inch (M5)。每台设备 23 张，共 46 张原始 PNG；点击缩略图查看完整尺寸。
+2026-10-31 · iOS / iPadOS 26.5 · iPhone 17 Pro 与 iPad Pro 11-inch (M5)。每台设备 23 张，共 46 张原始 PNG；点击缩略图查看完整尺寸。
 
 截图来自真实 App 和 Ghostty 渲染器，通过 loopback SSH fixture 连接。服务器地址、账号、命令文本均为测试数据；fixture 只回显输入，不执行 shell 命令。截图保留实际布局、系统键盘与系统文件选择器，没有对界面做后期修改。
 

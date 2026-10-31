@@ -8,7 +8,7 @@ final class GhosttyConfig {
       fatalError("Unable to allocate terminal configuration")
     }
     self.handle = handle
-    let text = """
+    var text = """
       command = /bin/sh
       working-directory = inherit
       clipboard-read = deny
@@ -41,6 +41,10 @@ final class GhosttyConfig {
       palette = 14=#0a6c74
       palette = 15=#ffffff
       """
+    #if os(macOS)
+    // AppKit owns application shortcuts. Option is the terminal's Alt modifier.
+    text += "\nkeybind = clear\nmacos-option-as-alt = true\n"
+    #endif
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "pocahontas-ghostty.conf")
     do {

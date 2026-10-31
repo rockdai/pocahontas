@@ -2,7 +2,7 @@
 import Foundation
 import GhosttyKit
 
-/// Lightweight, iOS-only port of ghostty's input model. Just enough to send
+/// Lightweight shared port of ghostty's input model. Just enough to send
 /// keyboard input to a surface: modifiers, a practical set of physical keys,
 /// and a builder for `ghostty_input_key_s`.
 ///

@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.rockdai
   deploymentTarget:
     iOS: "17.0"
+    macOS: "14.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -18,7 +19,7 @@ targets:
   pocahontas:
     type: application
     platform: iOS
-    sources: [Apps/iOS, Terminal]
+    sources: [Apps/iOS, Apps/Shared, Terminal/Ghostty, Terminal/iOS]
     dependencies:
       - package: PocahontasKit
       - framework: Frameworks/GhosttyKit.xcframework
@@ -51,6 +52,65 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
           - UIInterfaceOrientationPortraitUpsideDown
+  pocahontas-macOS:
+    type: application
+    platform: macOS
+    sources: [Apps/macOS, Apps/Shared, Terminal/Ghostty, Terminal/macOS]
+    dependencies:
+      - package: PocahontasKit
+      - framework: Frameworks/GhosttyKit.xcframework
+        embed: false
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: CoreText.framework
+      - sdk: CoreGraphics.framework
+      - sdk: Carbon.framework
+      - sdk: GameController.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas.mac
+        PRODUCT_MODULE_NAME: PocahontasMac
+        POCAHONTAS_MAC_TEST_PORT: "62225"
+        CODE_SIGN_ENTITLEMENTS: Apps/macOS/Pocahontas.entitlements
+        OTHER_LDFLAGS: [-ObjC, -lstdc++]
+        ENABLE_HARDENED_RUNTIME: YES
+        LM_SKIP_METADATA_EXTRACTION: YES
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+    info:
+      path: Apps/macOS/Info.plist
+      properties:
+        CFBundleDisplayName: pocahontas
+        NSPrincipalClass: NSApplication
+        NSRequiresAquaSystemAppearance: true
+        NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
+  PocahontasMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/macOS]
+    dependencies:
+      - target: pocahontas-macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_IDENTITY: "-"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/pocahontas-macOS.app/Contents/MacOS/pocahontas-macOS"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        LM_SKIP_METADATA_EXTRACTION: YES
+  PocahontasMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [Tests/macOSUI]
+    dependencies:
+      - target: pocahontas-macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_IDENTITY: "-"
+        TEST_TARGET_NAME: pocahontas-macOS
+        LM_SKIP_METADATA_EXTRACTION: YES
   PocahontasAppTests:
     type: bundle.unit-test
     platform: iOS
@@ -86,6 +146,14 @@ targets:
         TEST_TARGET_NAME: pocahontas
         LM_SKIP_METADATA_EXTRACTION: YES
 schemes:
+  pocahontas-macOS:
+    build:
+      targets:
+        pocahontas-macOS: all
+    test:
+      environmentVariables:
+        POCAHONTAS_MAC_TEST_PORT: "$(POCAHONTAS_MAC_TEST_PORT)"
+      targets: [PocahontasMacTests, PocahontasMacUITests]
   pocahontas:
     build:
       targets:

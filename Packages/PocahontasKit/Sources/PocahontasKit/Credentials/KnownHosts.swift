@@ -12,13 +12,21 @@ public struct KeychainKnownHosts: KnownHostsStore {
   public init(service: String = "com.rockdai.pocahontas.known-hosts") { self.service = service }
 
   private func query(_ host: String) -> [String: Any] {
-    [
+    var attributes: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
       kSecAttrAccount as String: host,
       kSecAttrSynchronizable as String: false,
-      kSecUseDataProtectionKeychain as String: true,
     ]
+    #if os(macOS)
+      // Trust pins are deliberately local. The login Keychain supports native Mac
+      // builds without an iCloud/provisioning profile; credentials will use the
+      // separately provisioned Data Protection Keychain when sync is implemented.
+      attributes[kSecUseDataProtectionKeychain as String] = false
+    #else
+      attributes[kSecUseDataProtectionKeychain as String] = true
+    #endif
+    return attributes
   }
 
   public func key(for host: String) throws -> String? {
@@ -38,7 +46,9 @@ public struct KeychainKnownHosts: KnownHostsStore {
   public func trust(_ key: String, for host: String) throws {
     var attributes = query(host)
     attributes[kSecValueData as String] = Data(key.utf8)
-    attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    #if !os(macOS)
+      attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    #endif
     let status = SecItemAdd(attributes as CFDictionary, nil)
     if status == errSecDuplicateItem, try self.key(for: host) == key { return }
     guard status == errSecSuccess else { throw KeychainError(status: status) }

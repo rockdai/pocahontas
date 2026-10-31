@@ -12,6 +12,8 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('result', type=pathlib.Path)
 parser.add_argument('destination', type=pathlib.Path)
+parser.add_argument('--count', type=int, default=23)
+parser.add_argument('--desktop', action='store_true')
 args = parser.parse_args()
 
 
@@ -52,11 +54,11 @@ with tempfile.TemporaryDirectory(prefix='pocahontas-screenshots-') as temporary:
             match = re.match(r'^(\d{2}-[a-z-]+)_', name)
             if match:
                 screenshots[match.group(1)] = exported / attachment['exportedFileName']
-    if len(screenshots) != 23:
-        raise SystemExit(f'Expected 23 screenshots, found {len(screenshots)}; destination unchanged.')
+    if len(screenshots) != args.count:
+        raise SystemExit(f'Expected {args.count} screenshots, found {len(screenshots)}; destination unchanged.')
     for name, source in screenshots.items():
         width, height = display_size(source)
-        if ('landscape' in name) != (width > height):
+        if not args.desktop and ('landscape' in name) != (width > height):
             raise SystemExit(f'Incorrect screenshot orientation: {name} ({width}x{height}); destination unchanged.')
     args.destination.mkdir(parents=True, exist_ok=True)
     for name, source in sorted(screenshots.items()):

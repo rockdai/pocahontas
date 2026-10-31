@@ -5,7 +5,9 @@ import PocahontasKit
 @MainActor @Observable
 final class TerminalController {
   let surface = TerminalSurfaceView()
-  let relay = TerminalInputRelay()
+  #if os(iOS)
+    let relay = TerminalInputRelay()
+  #endif
   var state: SSHSessionState = .disconnected
   var isPresented = false
   var title = "Terminal"
@@ -16,8 +18,10 @@ final class TerminalController {
   private var generation = 0
 
   init() {
-    relay.surface = surface
-    surface.inputRelay = relay
+    #if os(iOS)
+      relay.surface = surface
+      surface.inputRelay = relay
+    #endif
     surface.onPasteRequest = { [weak self] in self?.requestPaste($0) }
   }
 
@@ -96,11 +100,13 @@ final class TerminalController {
     state = .disconnected
   }
 
-  func suspend() {
+  func suspend(
+    reason: String =
+      "Disconnected while in the background. Connect again to resume your remote tmux session."
+  ) {
     if state == .connecting || state == .ready {
       disconnect()
-      state = .failed(
-        "Disconnected while in the background. Connect again to resume your remote tmux session.")
+      state = .failed(reason)
     }
   }
 

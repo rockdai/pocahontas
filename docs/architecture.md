@@ -1,8 +1,8 @@
 # pocahontas 产品与终端架构
 
-设计日期：2026-10-25。本文定义首版建议方案和实施验收条件；具体依赖版本需通过集成验证后锁定。
+设计日期：2026-10-25；平台范围更新：2026-10-31。本文定义首版建议方案和实施验收条件；具体依赖版本需通过集成验证后锁定。
 
-pocahontas 是面向 coding agent 的原生终端客户端。首版让用户在 iPhone / iPad 上连接自己的开发机器，使用完整 TUI，离开 App 后让任务继续在远端运行，回来时接回原会话。后续 macOS 共享连接库和核心逻辑，使用原生桌面界面。
+pocahontas 是面向 coding agent 的原生终端客户端。首版同时让用户在 iPhone、iPad 与原生 macOS 上连接自己的开发机器，使用完整 TUI，离开 App 后让任务继续在远端运行，回来时接回原会话。三端共享连接库与核心逻辑；Mac 使用 SwiftUI + AppKit 原生界面，不通过 Mac Catalyst 或 iPad 兼容模式交付。
 
 建议采用 **Ghostty 完整渲染层 + madeye passthru IO + SSH + 远端 tmux**。SSH 配置和凭据在产品中属于同一个连接库，分别由 CloudKit 和 iCloud Keychain 同步，详见 [SSH 同步设计](ssh-sync.md)。首版不需要自建账号或同步服务器。
 
@@ -64,7 +64,7 @@ baxian / gterm 曾处理 libxev 的 iOS mach-port 支持，以及 Zig 与特定 
 
 ## 模块与数据流
 
-建议使用 Swift 6，最低 iOS / iPadOS 17，后续 macOS 14。这与 `CKSyncEngine` 的平台基线一致。共享代码使用 Swift Package；iOS SwiftUI + UIKit，macOS SwiftUI + AppKit，平台 view 不强求共用。[Apple 同步示例](https://github.com/apple/sample-cloudkit-sync-engine)
+建议使用 Swift 6，最低 iOS / iPadOS 17，macOS 14。这与 `CKSyncEngine` 的平台基线一致。共享代码使用 Swift Package；iOS SwiftUI + UIKit，macOS SwiftUI + AppKit，平台 view 不强求共用。[Apple 同步示例](https://github.com/apple/sample-cloudkit-sync-engine)
 
 ```mermaid
 flowchart TB
@@ -86,7 +86,8 @@ flowchart TB
 
 ```text
 Apps/iOS/                    SwiftUI 页面、UIKit terminal host、应用生命周期
-Apps/macOS/                  后续桌面 target
+Apps/macOS/                  SwiftUI 桌面窗口、菜单与生命周期
+Apps/Shared/                 TerminalController 与浅色外观
 Packages/PocahontasKit/
   Sources/PocahontasKit/
     Connections/             HostProfile、SSHIdentity、WorkspaceBookmark
@@ -98,7 +99,7 @@ Packages/PocahontasKit/
   Tests/
 Terminal/Ghostty/            隔离 C ABI 的薄 Swift adapter
 Terminal/iOS/                输入法、手势、键盘和渲染层宿主
-Terminal/macOS/              后续 AppKit adapter
+Terminal/macOS/              AppKit 渲染宿主、NSTextInputClient 与鼠标输入
 vendor/ghostty/              固定版本的引擎
 scripts/                     构建、切片验证与集成测试入口
 ```
@@ -123,6 +124,8 @@ IO 必须保证：
 - resize 合并重复值，PTY 就绪后发最新有效 cols / rows；旋转和软键盘变化不创建新会话。
 - 网络断开后禁用输入；不在重连后自动重放已输入命令，避免重复执行。认证失败、host key 变化等待用户处理，不进入无休止重试。
 
+Mac 切换 App、窗口失焦或遮挡时保留 SSH 会话；每个窗口独立持有连接，关闭窗口只销毁本窗口会话。系统睡眠时显式断开，唤醒后由用户重新连接，不重放输入。
+
 iOS 不提供无限期后台运行保证，因此 keepalive 只用于检测可用连接。进入后台暂停渲染，在允许的短暂收尾时间保存状态并关闭连接；前台用新 SSH channel 重新连接。普通 shell 的原会话可能丢失；持久工作区由远端 tmux 保存。[Apple 后台执行说明](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time)
 
 工作区首次创建可使用 `tmux new-session -A -s <安全生成的名字>`；恢复优先 attach 已知 session。session 已消失时提示创建新会话，不自动重启 agent。session 名从 UUID 生成，目录和用户命令按远端 shell 的参数规则处理，不直接拼接未转义内容。用户指定的启动命令属于要执行的内容，必须可见且可编辑。[tmux 会话行为](https://github.com/tmux/tmux/wiki/Getting-Started)
@@ -141,11 +144,11 @@ iOS 不提供无限期后台运行保证，因此 keepalive 只用于检测可�
 
 | 阶段 | 交付 | 必须验证 |
 | --- | --- | --- |
-| M0 集成验证 | 固定 Ghostty 与工具链，最薄 iOS terminal + SSH | 真机和模拟器 Metal 显示、自动应答、resize、中文输入；加密 Ed25519 key 导入与目标服务器认证兼容；形成依赖锁定结果。 |
-| M1 本地首版 | 主机、身份、host key 校验、会话切换与 tmux 工作区 | 两种认证、指纹变化阻断、断网与前后台恢复、无输入重复、无 agent 重复启动、长时间输出内存稳定。 |
-| M2 Apple 同步 | CloudKit + Keychain，冲突与账号切换 UI | 两台同账号真机，另加 macOS 最小验证宿主测试共用 access group；离线编辑、凭据延迟、删除、换号和错误恢复。 |
-| M3 macOS 产品 | AppKit terminal、多窗口和快捷键 | 共用同一连接库与身份；同一 tmux 工作区切换；平台 view 与渲染生命周期独立验证。 |
+| M0 集成验证 | 固定 Ghostty 与工具链，iPhone / iPad / Mac terminal + SSH | iOS 真机与模拟器、Mac Metal 显示、自动应答、resize、中文输入与桌面快捷键；加密 Ed25519 key 导入与目标服务器认证兼容；形成依赖锁定结果。 |
+| M1 本地首版 | 三端主机、身份、host key 校验、会话切换与 tmux 工作区 | 两种认证、指纹变化阻断、断网与前后台恢复、无输入重复、无 agent 重复启动、长时间输出内存稳定。 |
+| M2 Apple 同步 | CloudKit + Keychain，冲突与账号切换 UI | iPhone、iPad 与正式 macOS App 使用同一账号测试共用 access group；离线编辑、凭据延迟、删除、换号和错误恢复。 |
+| 首版发布验收 | 三平台一起交付 | 共用同一连接库与身份；同一 tmux 工作区切换；iPhone / iPad 触控和硬件键盘、Mac 多窗口与 AppKit 输入分别验收。 |
 
-M2 属于首版目标；macOS 完整 UI 可延后，但跨 iOS / macOS 的 Keychain 与 CloudKit 验证必须提前，避免日后才发现签名或访问组不兼容。
+M0、M1、M2 均覆盖三平台，macOS 完整 UI 纳入本次首版，不另排后续阶段。CloudKit 与同步凭据必须在同一开发团队、共用 container / Keychain access group 的签名构建上验证，三平台同步验收通过后才发布。
 
-2026-10-26 已完成 M0 的首个可运行实现，具体依赖选择和验证边界见 [M0 集成记录](m0-integration.md)。真机、双设备同步与长时间性能验收仍待完成。
+2026-10-26 完成 iOS M0，2026-10-31 加入原生 macOS M0，具体依赖选择和验证边界见 [M0 集成记录](m0-integration.md)。真机、双设备同步与长时间性能验收仍待完成。
