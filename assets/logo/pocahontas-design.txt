@@ -1,0 +1,19 @@
+pocahontas logo
+
+White square background (#FFFFFF), one centered black uppercase P (#000000).
+Typeface: Contrail One by Riccardo De Franceschi / Sorkin Type Co.
+Google Fonts: https://fonts.google.com/specimen/Contrail+One
+Font source: https://github.com/google/fonts/tree/main/ofl/contrailone
+Font SHA-256: a7665eddb068507736f593ca8eb9f547db8a8d61ea1cf03e072554aab5a0e8b1
+License: SIL Open Font License 1.1; see fonts/OFL.txt.
+
+The official family provides Regular (400, normal) only. This mark uses the
+original uppercase P outline, a 12 px black stroke for synthetic bold, and
+a 12-degree rightward shear for oblique styling. No font substitution.
+Canvas: 1024 × 1024 px. Glyph outline height: 704 px before emboldening.
+
+Generate both assets on macOS from the repository root:
+  swift scripts/generate-logo.swift
+
+pocahontas.svg contains glyph outlines and an opaque white background; it
+does not require the font to be installed. pocahontas.png is opaque RGB.

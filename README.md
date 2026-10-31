@@ -1,5 +1,9 @@
 # pocahontas
 
+<p align="center">
+  <img src="assets/logo/pocahontas.png" width="160" alt="pocahontas — 白底黑色 Contrail One 大写 P Logo">
+</p>
+
 Terminal made for coding agents，首先支持 iOS / iPadOS，后续支持原生 macOS。
 
 通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，在用户开启同步后跨 Apple 设备共享。
