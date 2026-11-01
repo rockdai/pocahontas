@@ -54,9 +54,23 @@ final class LibraryScreenshotTests: XCTestCase {
     app.buttons["saved.connect"].tap()
     XCTAssertTrue(app.alerts["Trust this server?"].waitForExistence(timeout: 15))
     app.alerts["Trust this server?"].buttons["Trust and connect"].tap()
-    XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 15))
+    XCTAssertTrue(
+      app.staticTexts.matching(identifier: "terminal.status").matching(
+        NSPredicate(format: "label == %@", "Connected")
+      ).firstMatch.waitForExistence(timeout: 15))
     capture("11-saved-terminal", app)
     landscape("12-saved-terminal-landscape", app)
+    // Opening the same saved host again creates another independent session.
+    app.buttons["session.new"].tap()
+    app.buttons["library.open"].tap()
+    app.staticTexts["Agent workstation"].tap()
+    XCTAssertTrue(app.buttons["saved.connect"].waitForExistence(timeout: 5))
+    app.buttons["saved.connect"].tap()
+    let ready = NSPredicate(format: "label CONTAINS %@", "Connected")
+    expectation(for: ready, evaluatedWith: app.buttons["session.select.2"])
+    waitForExpectations(timeout: 15)
+    XCTAssertTrue(app.buttons["session.select.1"].label.contains("Connected"))
+    app.buttons["session.close.2"].tap()
     app.buttons["Close"].tap()
     app.buttons["library.open"].tap()
 

@@ -3,13 +3,15 @@ import Observation
 import PocahontasKit
 
 @MainActor @Observable
-final class TerminalController {
+final class TerminalController: Identifiable {
+  let id = UUID()
+  var number = 0
+  var endpoint = ""
   let surface = TerminalSurfaceView()
   #if os(iOS)
     let relay = TerminalInputRelay()
   #endif
   var state: SSHSessionState = .disconnected
-  var isPresented = false
   var title = "Terminal"
   var challenge: HostKeyChallenge?
   var pastePreview: String?
@@ -33,7 +35,6 @@ final class TerminalController {
   {
     disconnect()
     let token = generation
-    isPresented = true
     title = host
     state = .connecting
     do {
@@ -41,7 +42,7 @@ final class TerminalController {
       let credentials = try await Task.detached(priority: .userInitiated) {
         try SSHCredentials(authentication: authentication)
       }.value
-      guard generation == token else { return }
+      guard generation == token, !Task.isCancelled else { return }
       guard stillAuthorized() else { throw LibraryError.accountChanged }
       surface.ensureSurface()
       guard surface.hasLiveSurface else { throw TerminalError.creationFailed }
@@ -85,6 +86,26 @@ final class TerminalController {
     } catch {
       if generation == token { state = .failed(error.localizedDescription) }
     }
+  }
+
+  var status: String {
+    switch state {
+    case .connecting: "Connecting…"
+    case .ready: "Connected"
+    case .disconnected: "Disconnected"
+    case .failed: "Connection stopped"
+    }
+  }
+
+  func leaveInput() {
+    #if os(iOS)
+      surface.textInput.discardComposition()
+      relay.sticky = .none
+      _ = surface.resignFirstResponder()
+    #else
+      _ = surface.resignFirstResponder()
+    #endif
+    pastePreview = nil
   }
 
   func answerTrust(_ accepted: Bool) {

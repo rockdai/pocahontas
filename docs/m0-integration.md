@@ -68,7 +68,7 @@ Mac 本机 host trust 使用 login Keychain，不需要 iCloud profile；iOS 保
 | --- | --- |
 | 真机与硬件键盘 | 本机未连接 iOS 真机；IME 与 key encoding 已有模拟器测试，真实键盘 / 手势和长时间功耗需真机验证。 |
 | 长输出压力 | 有明确队列上限与流控，但尚未完成长时间 agent 流式输出和内存曲线测量。 |
-| 会话恢复 | 连接关闭后不自动重放输入；用户可重新连接并手动 attach 远端 tmux。工作区管理、自动重连和移动端多会话切换是 M1；Mac 已支持独立多窗口连接。 |
+| 会话恢复 | 连接关闭后不自动重放输入；用户可重新连接并手动 attach 远端 tmux。工作区管理和自动重连仍待实现；后续已加入三端多会话标签与 Mac 独立多窗口，见 [多会话验证记录](screenshots/sessions/README.md)。 |
 | 主机与身份管理 | 只有 quick connect；最近地址 / 用户名存本机 UserDefaults，host trust 存本机 Keychain。完整数据库与持久身份尚未引入。 |
 | 复制与终端交互 | Mac 已完成键盘、中文组合输入、鼠标选区与复制、粘贴和滚动。移动端文本选择复制、完整外接键盘映射及三端字号设置留在 M1。外观固定为浅色。 |
 | iCloud | 尚未创建 CloudKit container、共享 Keychain group 或同步 UI；M2 按同步设计落实，需正式开发团队签名。 |

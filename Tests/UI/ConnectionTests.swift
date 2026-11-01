@@ -16,7 +16,9 @@ final class ConnectionTests: XCTestCase {
     app.buttons["connection.connect"].tap()
     let trust = app.alerts.buttons["Trust and connect"]
     if trust.waitForExistence(timeout: 5) { trust.tap() }
-    let connected = app.staticTexts["Connected"]
+    let connected = app.staticTexts.matching(identifier: "terminal.status").matching(
+      NSPredicate(format: "label == %@", "Connected")
+    ).firstMatch
     XCTAssertTrue(connected.waitForExistence(timeout: 20))
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "SSH terminal connected"
@@ -28,7 +30,10 @@ final class ConnectionTests: XCTestCase {
     password.typeText("wrong-password")
     app.buttons["connection.connect"].tap()
     XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 20))
-    XCTAssertFalse(app.staticTexts["Connected"].exists)
+    XCTAssertFalse(
+      app.staticTexts.matching(identifier: "terminal.status").matching(
+        NSPredicate(format: "label == %@", "Connected")
+      ).firstMatch.exists)
   }
 
   @MainActor

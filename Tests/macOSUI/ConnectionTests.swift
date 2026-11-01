@@ -33,7 +33,7 @@ final class ConnectionTests: XCTestCase {
     key.typeText("example-invalid-key")
     capture("04-connection-key-editor", window)
     app.buttons["connection.connect"].click()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("05-error-invalid-key", window)
     app.buttons["terminal.close"].click()
     app.radioButtons["SSH key"].click()
@@ -49,14 +49,17 @@ final class ConnectionTests: XCTestCase {
     XCTAssertTrue(trust.waitForExistence(timeout: 15))
     capture("07-host-trust", window)
     app.buttons["Cancel"].click()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("08-error-trust-declined", window)
     app.buttons["terminal.close"].click()
     replace(app.secureTextFields["connection.password"], "pocahontas-test")
     app.buttons["connection.connect"].click()
     XCTAssertTrue(trust.waitForExistence(timeout: 10))
     trust.click()
-    XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 20))
+    XCTAssertTrue(
+      app.descendants(matching: .any).matching(identifier: "terminal.status").matching(
+        NSPredicate(format: "label == %@", "Connected")
+      ).firstMatch.waitForExistence(timeout: 20))
     capture("09-terminal-connected", window)
 
     let terminal = app.textViews["terminal.surface"]
@@ -84,20 +87,23 @@ final class ConnectionTests: XCTestCase {
     XCTAssertEqual(app.windows.count, 2)
     capture("14-new-connection-window", app.windows.firstMatch)
     app.typeKey("w", modifierFlags: .command)
-    XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any).matching(identifier: "terminal.status").matching(
+        NSPredicate(format: "label == %@", "Connected")
+      ).firstMatch.waitForExistence(timeout: 5))
     XCTAssertEqual(app.windows.count, 1)
 
     app.buttons["terminal.close"].click()
     replace(app.secureTextFields["connection.password"], "wrong-password")
     app.buttons["connection.connect"].click()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.buttons["Trust and connect"].exists, "The accepted host pin must persist")
     capture("15-error-authentication", window)
     app.buttons["terminal.close"].click()
     replace(app.textFields["connection.port"], "0")
     replace(app.secureTextFields["connection.password"], "pocahontas-test")
     app.buttons["connection.connect"].click()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("16-error-invalid-port", window)
     app.terminate()
   }

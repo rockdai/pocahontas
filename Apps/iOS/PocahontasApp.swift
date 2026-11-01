@@ -5,21 +5,15 @@ import UniformTypeIdentifiers
 @main
 struct PocahontasApp: App {
   @UIApplicationDelegateAdaptor(CloudApplicationDelegate.self) private var delegate
-  @State private var terminal = TerminalController()
   @Environment(\.scenePhase) private var scenePhase
   var body: some Scene {
     WindowGroup {
-      ConnectionView(terminal: terminal)
+      SessionWorkspaceView()
         .preferredColorScheme(.light)
         .tint(AppAppearance.accent)
         .task { await LibraryServices.shared.start() }
-        .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
-          terminal.suspend(
-            reason: "The connection library changed. Connect again using the current account.")
-        }
         .onChange(of: scenePhase) { _, phase in
           GhosttyEngine.shared.setBackgrounded(phase != .active)
-          if phase == .background { terminal.suspend() }
           if phase == .active {
             Task {
               await LibraryServices.shared.library?.checkAccount()
@@ -52,8 +46,38 @@ final class CloudApplicationDelegate: NSObject, UIApplicationDelegate {
   }
 }
 
+struct SessionWorkspaceView: View {
+  @State private var workspace = TerminalWorkspace()
+  @Environment(\.scenePhase) private var scenePhase
+  var body: some View {
+    VStack(spacing: 0) {
+      SessionBar(workspace: workspace)
+      Divider()
+      if let terminal = workspace.selected {
+        TerminalScreen(terminal: terminal, onClose: { workspace.close(terminal.id) })
+          .id(terminal.id)
+      } else {
+        ConnectionView(workspace: workspace)
+      }
+    }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .background { workspace.suspendAll() }
+    }
+    .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
+      workspace.suspendAll(
+        reason: "The connection library changed. Connect again using the current account.")
+    }
+    .overlay {
+      if scenePhase != .active {
+        AppAppearance.background.overlay(Label("pocahontas", systemImage: "terminal").font(.title2))
+          .ignoresSafeArea()
+      }
+    }
+  }
+}
+
 struct ConnectionView: View {
-  @Bindable var terminal: TerminalController
+  let workspace: TerminalWorkspace
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("quickConnect.host") private var host = ""
   @AppStorage("quickConnect.port") private var port = "22"
@@ -122,10 +146,8 @@ struct ConnectionView: View {
             password = ""
             privateKey = ""
             passphrase = ""
-            Task {
-              await terminal.connect(
-                host: host, port: port, username: username, authentication: authentication)
-            }
+            workspace.open(
+              host: host, port: port, username: username, authentication: authentication)
           } label: {
             HStack {
               Spacer()
@@ -149,15 +171,7 @@ struct ConnectionView: View {
         onDismiss: {
           guard let pending = pendingSavedConnection else { return }
           pendingSavedConnection = nil
-          guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
-            return
-          }
-          Task {
-            guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
-              return
-            }
-            await terminal.connectSaved(pending.binding, authentication: pending.authentication)
-          }
+          workspace.openSaved(pending)
         }
       ) {
         if let library = LibraryServices.shared.library {
@@ -176,9 +190,6 @@ struct ConnectionView: View {
           AppAppearance.background
             .overlay(Label("pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
         }
-      }
-      .fullScreenCover(isPresented: $terminal.isPresented, onDismiss: { terminal.disconnect() }) {
-        TerminalScreen(terminal: terminal)
       }
       .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .text]) { result in
         do {
@@ -208,6 +219,7 @@ struct ConnectionView: View {
 
 struct TerminalScreen: View {
   @Bindable var terminal: TerminalController
+  var onClose: () -> Void
   @Environment(\.scenePhase) private var scenePhase
   var body: some View {
     NavigationStack {
@@ -216,7 +228,7 @@ struct TerminalScreen: View {
           Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning)
             .frame(
               width: 7, height: 7)
-          Text(status).font(.caption).accessibilityIdentifier("terminal.status")
+          Text(terminal.status).font(.caption).accessibilityIdentifier("terminal.status")
           Spacer()
         }.padding(.horizontal).padding(.vertical, 10)
         if case .failed(let message) = terminal.state {
@@ -231,9 +243,8 @@ struct TerminalScreen: View {
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           Button("Close", systemImage: "xmark") {
-            terminal.disconnect()
-            terminal.isPresented = false
-          }
+            onClose()
+          }.accessibilityIdentifier("terminal.close")
         }
         ToolbarItem(placement: .topBarTrailing) {
           Button("Paste", systemImage: "doc.on.clipboard") {
@@ -280,15 +291,6 @@ struct TerminalScreen: View {
           }
         }.presentationDetents([.medium, .large])
       }
-    }
-  }
-
-  private var status: String {
-    switch terminal.state {
-    case .connecting: "Connecting…"
-    case .ready: "Connected"
-    case .disconnected: "Disconnected"
-    case .failed: "Connection stopped"
     }
   }
 

@@ -16,9 +16,11 @@ App 与终端统一使用固定浅色外观，不跟随系统深色模式，也�
 
 已加入三端共用的本地连接库、SSH 身份管理、CloudKit 配置同步与逐项选择的 iCloud Keychain 凭据存储。快速连接仍只使用一次性凭据；已保存连接可在离线时使用。同步实现包括持久 outbox、冲突审阅、删除标记和账号隔离。**当前开发 profile 尚未关联目标 iCloud container，真实跨设备同步仍待签名配置与真机验收**，详见 [iCloud 构建与验收](docs/icloud-setup.md)。
 
-Mac 版提供原生窗口、独立并行连接、鼠标选区、⌘C / ⌘V 与中文输入；切换到其他 App 不会断开 SSH，关闭窗口或系统睡眠时断开。自动 tmux 工作区尚未实现，目前可在远端手动运行 tmux，返回 App 后重新连接并 attach。
+iPhone、iPad 和 Mac 都支持多个并行 SSH 会话：点击顶部 **＋** 新建，点击标签切换，点击标签的 **×** 单独关闭。同一台主机也可打开多个独立会话；切换标签或填写新连接时，其他连接继续接收输出。每个会话保留独立的终端内容、认证状态和输入。
 
-[浏览连接库、SSH 身份与 iCloud 设置的三端截图](docs/screenshots/library/README.md)。
+Mac 还支持多个原生窗口：**⌘T** 新会话、**⌘N** 新窗口、**⌃Tab / ⌃⇧Tab** 切换会话；关闭窗口只关闭该窗口内的会话。鼠标选区、⌘C / ⌘V 与中文输入继续可用，切换到其他 App 不会断开 SSH。iOS 进入后台、Mac 系统睡眠或连接库账号变化时，会断开受影响窗口中的所有会话。自动 tmux 工作区尚未实现，目前可在远端手动运行 tmux，返回 App 后重新连接并 attach。
+
+[浏览多会话截图与验证记录](docs/screenshots/sessions/README.md) · [浏览连接库、SSH 身份与 iCloud 设置的三端截图](docs/screenshots/library/README.md)。
 
 ## 构建
 
@@ -73,7 +75,7 @@ Mac 原生终端、Keychain 与 UI 测试入口（UI 自动化可用时导出 16
 scripts/test-macos.sh
 ```
 
-该脚本在随机 loopback 端口运行专用 fixture；每次新端点都验证首次信任，不清除已有主机指纹。本机原生单元测试通过，Mac XCUITest 启动自动化超时，本轮桌面截图改由 Computer Use 操作真实窗口保存；详见截图索引。
+该脚本在随机 loopback 端口运行专用 fixture；每次新端点都验证首次信任，不清除已有主机指纹。M0 阶段 Mac XCUITest 曾发生自动化启动超时，历史截图使用实际窗口操作。本轮多会话的 Mac XCTest 与 XCUITest 已通过，可用 `scripts/test-session-macos.sh` 重跑并导出多会话截图。
 
 ## 设计与集成记录
 

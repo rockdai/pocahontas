@@ -124,7 +124,7 @@ IO 必须保证：
 - resize 合并重复值，PTY 就绪后发最新有效 cols / rows；旋转和软键盘变化不创建新会话。
 - 网络断开后禁用输入；不在重连后自动重放已输入命令，避免重复执行。认证失败、host key 变化等待用户处理，不进入无休止重试。
 
-Mac 切换 App、窗口失焦或遮挡时保留 SSH 会话；每个窗口独立持有连接，关闭窗口只销毁本窗口会话。系统睡眠时显式断开，唤醒后由用户重新连接，不重放输入。
+Mac 切换 App、窗口失焦或遮挡时保留 SSH 会话；每个窗口独立持有一个会话集合，集合中每个标签有自己的 SSH channel、Ghostty surface 和输入状态。切换标签只更换显示的 view，保留其他连接与解析缓冲；关闭标签释放对应会话，关闭窗口释放该窗口全部会话。系统睡眠时显式断开，唤醒后由用户重新连接，不重放输入。
 
 iOS 不提供无限期后台运行保证，因此 keepalive 只用于检测可用连接。进入后台暂停渲染，在允许的短暂收尾时间保存状态并关闭连接；前台用新 SSH channel 重新连接。普通 shell 的原会话可能丢失；持久工作区由远端 tmux 保存。[Apple 后台执行说明](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time)
 

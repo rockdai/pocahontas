@@ -51,16 +51,6 @@ import Security
   }
 }
 
-extension TerminalController {
-  func connectSaved(_ binding: ConnectionBinding, authentication: SSHAuthentication) async {
-    let accountGeneration = LibraryServices.shared.library?.accountGeneration
-    await connect(
-      host: binding.host, port: String(binding.port), username: binding.username,
-      authentication: authentication,
-      stillAuthorized: { LibraryServices.shared.library?.accountGeneration == accountGeneration })
-  }
-}
-
 struct PendingSavedConnection {
   let binding: ConnectionBinding
   let authentication: SSHAuthentication

@@ -118,7 +118,7 @@ targets:
   PocahontasMacTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests/macOS]
+    sources: [Tests/macOS, Tests/Shared]
     dependencies:
       - target: pocahontas-macOS
     settings:
@@ -143,7 +143,7 @@ targets:
   PocahontasAppTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [Tests/iOS]
+    sources: [Tests/iOS, Tests/Shared]
     dependencies:
       - target: pocahontas
     settings:
@@ -188,7 +188,26 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_TARGET_NAME: pocahontas
         LM_SKIP_METADATA_EXTRACTION: YES
+  PocahontasSessionScreenshotTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/SessionScreenshots]
+    dependencies:
+      - target: pocahontas
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: pocahontas
+        LM_SKIP_METADATA_EXTRACTION: YES
 schemes:
+  session-screenshots:
+    build:
+      targets:
+        pocahontas: all
+    test:
+      environmentVariables:
+        POCAHONTAS_SESSION_TEST_PORT: "62226"
+      targets: [PocahontasAppTests, PocahontasSessionScreenshotTests]
   library-screenshots:
     build:
       targets:
@@ -202,6 +221,7 @@ schemes:
     test:
       environmentVariables:
         POCAHONTAS_MAC_TEST_PORT: "$(POCAHONTAS_MAC_TEST_PORT)"
+        POCAHONTAS_SESSION_TEST_PORT: "$(POCAHONTAS_MAC_TEST_PORT)"
       targets: [PocahontasMacTests, PocahontasMacUITests]
   pocahontas:
     build:

@@ -17,9 +17,32 @@ struct PocahontasMacApp: App {
     .defaultSize(width: 960, height: 720)
     .commands {
       CommandGroup(replacing: .newItem) {
-        Button("New Connection") { openWindow(id: "connection") }
+        Button("New Window") { openWindow(id: "connection") }
           .keyboardShortcut("n")
       }
+      SessionCommands()
+    }
+  }
+}
+
+private struct WorkspaceFocusKey: FocusedValueKey { typealias Value = TerminalWorkspace }
+extension FocusedValues {
+  fileprivate var terminalWorkspace: TerminalWorkspace? {
+    get { self[WorkspaceFocusKey.self] }
+    set { self[WorkspaceFocusKey.self] = newValue }
+  }
+}
+private struct SessionCommands: Commands {
+  @FocusedValue(\.terminalWorkspace) private var workspace
+  var body: some Commands {
+    CommandMenu("Session") {
+      Button("New Session") { workspace?.showNewConnection() }.keyboardShortcut("t")
+        .disabled(workspace == nil)
+      Button("Next Session") { workspace?.selectNext() }.keyboardShortcut(.tab, modifiers: .control)
+        .disabled(workspace?.sessions.isEmpty != false)
+      Button("Previous Session") { workspace?.selectNext(backwards: true) }
+        .keyboardShortcut(.tab, modifiers: [.control, .shift])
+        .disabled(workspace?.sessions.isEmpty != false)
     }
   }
 }
@@ -51,27 +74,31 @@ final class MacApplicationDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct MacConnectionWindow: View {
-  @State private var terminal = TerminalController()
+  @State private var workspace = TerminalWorkspace()
 
   var body: some View {
-    Group {
-      if terminal.isPresented {
-        MacTerminalScreen(terminal: terminal)
+    VStack(spacing: 0) {
+      SessionBar(workspace: workspace)
+      Divider()
+      if let terminal = workspace.selected {
+        MacTerminalScreen(terminal: terminal, onClose: { workspace.close(terminal.id) })
+          .id(terminal.id)
       } else {
-        MacConnectionForm(terminal: terminal)
+        MacConnectionForm(workspace: workspace)
       }
     }
+    .focusedSceneValue(\.terminalWorkspace, workspace)
     .frame(minWidth: 640, minHeight: 560)
     .background(AppAppearance.background)
-    .background(WindowLifetime(onClose: { terminal.disconnect() }))
+    .background(WindowLifetime(onClose: { workspace.closeAll() }))
     .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
-      terminal.suspend(
+      workspace.suspendAll(
         reason: "The connection library changed. Connect again using the current account.")
     }
     .onReceive(
       NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)
     ) { _ in
-      terminal.suspend(
+      workspace.suspendAll(
         reason:
           "Disconnected while your Mac was asleep. Connect again to resume your remote tmux session."
       )
@@ -80,7 +107,7 @@ struct MacConnectionWindow: View {
 }
 
 private struct MacConnectionForm: View {
-  let terminal: TerminalController
+  let workspace: TerminalWorkspace
   @AppStorage("quickConnect.host") private var host = ""
   @AppStorage("quickConnect.port") private var port = "22"
   @AppStorage("quickConnect.username") private var username = ""
@@ -139,7 +166,7 @@ private struct MacConnectionForm: View {
         )
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         HStack {
-          Text("⌘N opens another connection").font(.caption).foregroundStyle(.secondary)
+          Text("⌘T New session · ⌘N New window").font(.caption).foregroundStyle(.secondary)
           Spacer()
           Button("Connect", systemImage: "arrow.up.right") { connect() }
             .buttonStyle(.borderedProminent).controlSize(.large)
@@ -161,15 +188,7 @@ private struct MacConnectionForm: View {
       onDismiss: {
         guard let pending = pendingSavedConnection else { return }
         pendingSavedConnection = nil
-        guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
-          return
-        }
-        Task {
-          guard pending.generation == LibraryServices.shared.library?.accountGeneration else {
-            return
-          }
-          await terminal.connectSaved(pending.binding, authentication: pending.authentication)
-        }
+        workspace.openSaved(pending)
       }
     ) {
       if let library = LibraryServices.shared.library {
@@ -211,25 +230,23 @@ private struct MacConnectionForm: View {
     password = ""
     privateKey = ""
     passphrase = ""
-    Task {
-      await terminal.connect(
-        host: host, port: port, username: username, authentication: authentication)
-    }
+    workspace.open(host: host, port: port, username: username, authentication: authentication)
   }
 }
 
 private struct MacTerminalScreen: View {
   @Bindable var terminal: TerminalController
+  var onClose: () -> Void
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 8) {
         Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning)
           .frame(width: 7, height: 7)
-        Text(status).font(.callout)
-          .accessibilityElement(children: .ignore).accessibilityLabel(status)
+        Text(terminal.status).font(.callout)
+          .accessibilityElement(children: .ignore).accessibilityLabel(terminal.status)
           .accessibilityIdentifier("terminal.status")
         Spacer()
-        Text(terminal.title).font(.callout).foregroundStyle(.secondary)
+        Text(terminal.endpoint).font(.callout).foregroundStyle(.secondary)
       }.padding(14).accessibilityElement(children: .contain)
       Divider()
       if case .failed(let message) = terminal.state {
@@ -250,8 +267,7 @@ private struct MacTerminalScreen: View {
     .toolbar {
       ToolbarItem(placement: .navigation) {
         Button("Close Connection", systemImage: "xmark") {
-          terminal.disconnect()
-          terminal.isPresented = false
+          onClose()
         }.accessibilityIdentifier("terminal.close")
       }
       ToolbarItemGroup {
@@ -297,14 +313,6 @@ private struct MacTerminalScreen: View {
       }.padding(24).frame(width: 540, height: 320).preferredColorScheme(.light)
     }
   }
-  private var status: String {
-    switch terminal.state {
-    case .connecting: "Connecting…"
-    case .ready: "Connected"
-    case .disconnected: "Disconnected"
-    case .failed: "Connection stopped"
-    }
-  }
 }
 
 private struct MacTerminalHost: NSViewRepresentable {
@@ -313,7 +321,7 @@ private struct MacTerminalHost: NSViewRepresentable {
   func updateNSView(_ view: TerminalSurfaceView, context: Context) {}
 }
 
-/// Each window owns a session, including when closed through the red window button.
+/// Each window owns all its sessions, including when closed through the red window button.
 private struct WindowLifetime: NSViewRepresentable {
   var onClose: () -> Void
   func makeNSView(context: Context) -> LifetimeView { LifetimeView(onClose: onClose) }

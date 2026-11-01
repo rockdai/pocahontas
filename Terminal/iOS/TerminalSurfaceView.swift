@@ -128,6 +128,7 @@ final class TerminalSurfaceView: UIView {
   }
   private func updateVisibility() {
     let current = window != nil && surface != nil
+    if let surface { ghostty_surface_set_occlusion(surface, current) }
     guard current != visible else { return }
     visible = current
     GhosttyEngine.shared.visible(current ? 1 : -1)
@@ -154,6 +155,26 @@ final class TerminalSurfaceView: UIView {
     }
     CATransaction.commit()
   }
+
+  #if DEBUG
+    /// Inspect real Ghostty output in integration tests; absent from release builds.
+    var textForTesting: String {
+      guard let surface else { return "" }
+      let selection = ghostty_selection_s(
+        top_left: .init(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+        bottom_right: .init(
+          tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+        rectangle: false)
+      var text = ghostty_text_s()
+      guard ghostty_surface_read_text(surface, selection, &text) else { return "" }
+      defer { ghostty_surface_free_text(surface, &text) }
+      guard let pointer = text.text else { return "" }
+      return String(
+        decoding: UnsafeBufferPointer(
+          start: UnsafeRawPointer(pointer).assumingMemoryBound(to: UInt8.self),
+          count: Int(text.text_len)), as: UTF8.self)
+    }
+  #endif
 
   var hasLiveSurface: Bool { surface != nil }
   var gridSize: (columns: Int, rows: Int) {

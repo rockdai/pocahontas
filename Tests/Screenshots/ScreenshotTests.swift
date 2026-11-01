@@ -47,6 +47,7 @@ final class ScreenshotTests: XCTestCase {
     capture("06-error-invalid-key", app)
     app.buttons["Close"].tap()
 
+    app.buttons["SSH key"].tap()
     let importButton = app.buttons["Import Ed25519 key from Files"]
     importButton.tap()
     let browser = app.navigationBars["Browse"]
@@ -77,7 +78,10 @@ final class ScreenshotTests: XCTestCase {
     app.buttons["connection.connect"].tap()
     XCTAssertTrue(trust.waitForExistence(timeout: 10))
     trust.buttons["Trust and connect"].tap()
-    XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 20))
+    XCTAssertTrue(
+      app.staticTexts.matching(identifier: "terminal.status").matching(
+        NSPredicate(format: "label == %@", "Connected")
+      ).firstMatch.waitForExistence(timeout: 20))
     capture("12-terminal-connected", app)
     XCUIDevice.shared.orientation = .landscapeLeft
     capture("13-terminal-landscape", app)
