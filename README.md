@@ -1,10 +1,12 @@
-# pocahontas
+# Pocahontas
 
 <p align="center">
-  <img src="assets/logo/pocahontas.png" width="160" alt="pocahontas — 白底黑色 Contrail One 大写 P Logo">
+  <img src="assets/logo/pocahontas.png" width="160" alt="Pocahontas — 白底黑色 Contrail One 大写 P Logo">
 </p>
 
 Terminal made for coding agents，首版同时支持 iPhone、iPad 和原生 macOS。
+
+[下载 Mac 测试包（Apple Silicon）](https://github.com/rockdai/pocahontas/raw/refs/heads/main/downloads/Pocahontas-AppleSilicon.zip) · [安装说明与 SHA-256 校验](downloads/README.md)。包内应用名为 **Pocahontas.app**，无需 Xcode；这是尚未公证的本地功能测试版。
 
 通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，在用户开启同步后跨 Apple 设备共享。
 
