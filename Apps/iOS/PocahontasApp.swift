@@ -69,7 +69,7 @@ struct SessionWorkspaceView: View {
     }
     .overlay {
       if scenePhase != .active {
-        AppAppearance.background.overlay(Label("pocahontas", systemImage: "terminal").font(.title2))
+        AppAppearance.background.overlay(Label("Pocahontas", systemImage: "terminal").font(.title2))
           .ignoresSafeArea()
       }
     }
@@ -159,7 +159,7 @@ struct ConnectionView: View {
               host.isEmpty || username.isEmpty || (useKey ? privateKey.isEmpty : password.isEmpty))
         }
       }
-      .navigationTitle("pocahontas")
+      .navigationTitle("Pocahontas")
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Button("Saved Connections", systemImage: "rectangle.stack") { showingLibrary = true }
@@ -188,7 +188,7 @@ struct ConnectionView: View {
       .overlay {
         if scenePhase != .active {
           AppAppearance.background
-            .overlay(Label("pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
+            .overlay(Label("Pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
         }
       }
       .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .text]) { result in
@@ -255,7 +255,7 @@ struct TerminalScreen: View {
       .overlay {
         if scenePhase != .active {
           AppAppearance.background
-            .overlay(Label("pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
+            .overlay(Label("Pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
         }
       }
       .alert(

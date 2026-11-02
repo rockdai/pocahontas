@@ -9,7 +9,7 @@ struct PocahontasMacApp: App {
   @Environment(\.openWindow) private var openWindow
 
   var body: some Scene {
-    WindowGroup("pocahontas", id: "connection") {
+    WindowGroup("Pocahontas", id: "connection") {
       MacConnectionWindow()
         .preferredColorScheme(.light)
         .tint(AppAppearance.accent)
@@ -178,7 +178,7 @@ private struct MacConnectionForm: View {
       }.padding(36).frame(maxWidth: 660)
         .frame(maxWidth: .infinity)
     }
-    .navigationTitle("pocahontas")
+    .navigationTitle("Pocahontas")
     .toolbar {
       Button("Saved Connections", systemImage: "rectangle.stack") { showingLibrary = true }
         .accessibilityIdentifier("library.open")

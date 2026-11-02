@@ -31,6 +31,7 @@ packages:
     path: Packages/PocahontasKit
 targets:
   pocahontas:
+    productName: Pocahontas
     type: application
     platform: iOS
     sources: [Apps/iOS, Apps/Shared, Terminal/Ghostty, Terminal/iOS]
@@ -46,6 +47,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas
+        PRODUCT_NAME: Pocahontas
+        PRODUCT_MODULE_NAME: pocahontas
         CODE_SIGN_ENTITLEMENTS: Apps/iOS/Pocahontas.entitlements
         "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Apps/iOS/Simulator.entitlements
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
@@ -61,7 +64,7 @@ targets:
     info:
       path: Apps/iOS/Info.plist
       properties:
-        CFBundleDisplayName: pocahontas
+        CFBundleDisplayName: Pocahontas
         PocahontasCloudEnabled: "$(POCAHONTAS_CLOUD_ENABLED)"
         PocahontasKeychainGroup: "$(AppIdentifierPrefix)com.rockdai.pocahontas.shared"
         UILaunchScreen: {}
@@ -75,6 +78,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
           - UIInterfaceOrientationPortraitUpsideDown
   pocahontas-macOS:
+    productName: Pocahontas
     type: application
     platform: macOS
     sources: [Apps/macOS, Apps/Shared, Terminal/Ghostty, Terminal/macOS]
@@ -93,6 +97,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas.mac
         PRODUCT_MODULE_NAME: PocahontasMac
+        PRODUCT_NAME: Pocahontas
         POCAHONTAS_MAC_TEST_PORT: "62225"
         CODE_SIGN_ENTITLEMENTS: Apps/macOS/Pocahontas.entitlements
         OTHER_LDFLAGS: [-ObjC, -lstdc++]
@@ -109,7 +114,7 @@ targets:
     info:
       path: Apps/macOS/Info.plist
       properties:
-        CFBundleDisplayName: pocahontas
+        CFBundleDisplayName: Pocahontas
         PocahontasCloudEnabled: "$(POCAHONTAS_CLOUD_ENABLED)"
         PocahontasKeychainGroup: "$(AppIdentifierPrefix)com.rockdai.pocahontas.shared"
         NSPrincipalClass: NSApplication
@@ -125,7 +130,7 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: true
         CODE_SIGN_IDENTITY: "-"
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/pocahontas-macOS.app/Contents/MacOS/pocahontas-macOS"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Pocahontas.app/Contents/MacOS/Pocahontas"
         BUNDLE_LOADER: "$(TEST_HOST)"
         LM_SKIP_METADATA_EXTRACTION: YES
   PocahontasMacUITests:
@@ -149,7 +154,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/pocahontas.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/pocahontas"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Pocahontas.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Pocahontas"
         BUNDLE_LOADER: "$(TEST_HOST)"
         LM_SKIP_METADATA_EXTRACTION: YES
   PocahontasUITests:
