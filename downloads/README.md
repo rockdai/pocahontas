@@ -2,14 +2,16 @@
 
 [直接下载 Pocahontas（Apple Silicon）](https://github.com/rockdai/pocahontas/raw/refs/heads/main/downloads/Pocahontas-AppleSilicon.zip)
 
-解压后将 **Pocahontas.app** 拖入“应用程序”，即可在另一台 MacBook 上测试，无需安装 Xcode。
+解压后将 **Pocahontas.app** 拖入“应用程序”，即可在另一台 MacBook 上测试，无需安装 Xcode。更新已有安装时，先退出旧版 App，再替换“应用程序”中的 Pocahontas.app。
 
 - 适用于 Apple 芯片（M1 或更新），项目最低系统 macOS 14；Intel Mac 不适用，最低系统版本仍待实机验收。
 - 这是 ad-hoc 签名的 Debug 测试包，未做 Developer ID 签名和 Apple 公证。如果被系统拦截，先尝试打开一次，再到“系统设置 → 隐私与安全性 → 仍要打开”，仅允许这个测试 App。[Apple 操作说明](https://support.apple.com/en-gb/102445)
 - 支持 SSH 密码 / Ed25519 私钥连接、并行会话、多窗口和本地连接配置。这个构建不提供密码 / 私钥持久化或 iCloud 同步，连接时重新输入凭据；iCloud 联调需另行完成[签名配置](../docs/icloud-setup.md)。
 - **⌘T** 新会话，**⌃Tab / ⌃⇧Tab** 切换，标签 **×** 关闭单个会话，**⌘N** 新窗口。
 
-源码版本：[11b75546921291036793004a2b7e192a00afb88c](https://github.com/rockdai/pocahontas/commit/11b75546921291036793004a2b7e192a00afb88c)。包内也附带源码版本与使用说明。包中不含构建机器的用户配置、已保存主机、密码或私钥。
+源码版本：[bd893e4dab6c799e9b2dc5b9f55ca05d403ada72](https://github.com/rockdai/pocahontas/commit/bd893e4dab6c799e9b2dc5b9f55ca05d403ada72)。包内也附带源码版本与使用说明。包中不含构建机器的用户配置、已保存主机、密码或私钥。
+
+本次打包日期：**2026-11-03**。包含终端界面精简、激活会话时检测连接与尝试重连等最新 main 更新。打包前通过 26 项共享测试、13 项 Mac 原生测试；ZIP 完整性、源码版本、Apple Silicon 架构和解压后的应用签名均已校验。
 
 下载后可在终端校验：
 
