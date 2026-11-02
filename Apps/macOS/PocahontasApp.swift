@@ -15,6 +15,7 @@ struct PocahontasMacApp: App {
         .tint(AppAppearance.accent)
     }
     .defaultSize(width: 960, height: 720)
+    .windowStyle(.hiddenTitleBar)
     .commands {
       CommandGroup(replacing: .newItem) {
         Button("New Window") { openWindow(id: "connection") }
@@ -79,28 +80,38 @@ struct MacConnectionWindow: View {
   var body: some View {
     VStack(spacing: 0) {
       SessionBar(workspace: workspace)
+        .padding(.leading, 78)  // Keep the native traffic lights in the same top row.
+        .contentShape(Rectangle())
+        .modifier(SessionWindowDrag())
       Divider()
       if let terminal = workspace.selected {
-        MacTerminalScreen(terminal: terminal, onClose: { workspace.close(terminal.id) })
+        MacTerminalScreen(terminal: terminal)
           .id(terminal.id)
       } else {
         MacConnectionForm(workspace: workspace)
       }
     }
+    .ignoresSafeArea(.container, edges: .top)
     .focusedSceneValue(\.terminalWorkspace, workspace)
     .frame(minWidth: 640, minHeight: 560)
     .background(AppAppearance.background)
-    .background(WindowLifetime(onClose: { workspace.closeAll() }))
+    .background(
+      WindowLifetime(
+        onClose: { workspace.closeAll() },
+        onActivate: { workspace.activateSelected() },
+        onDeactivate: { workspace.deactivateSelected() })
+    )
     .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
       workspace.suspendAll(
-        reason: "The connection library changed. Connect again using the current account.")
+        reason: "The connection library changed. Connect again using the current account.",
+        allowReconnect: false)
     }
     .onReceive(
       NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)
     ) { _ in
       workspace.suspendAll(
         reason:
-          "Disconnected while your Mac was asleep. Connect again to resume your remote tmux session."
+          "Disconnected while your Mac was asleep. Activate this session to reconnect."
       )
     }
   }
@@ -162,11 +173,12 @@ private struct MacConnectionForm: View {
           }
         }.formStyle(.grouped).scrollDisabled(true).fixedSize(horizontal: false, vertical: true)
         Text(
-          "Quick Connect uses credentials once. Open Saved Connections to save a server or manage iCloud sync."
+          "Quick Connect keeps credentials in memory until the tab closes, including for reconnecting. Use Saved Connections to save a server or manage iCloud sync."
         )
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         HStack {
-          Text("⌘T New session · ⌘N New window").font(.caption).foregroundStyle(.secondary)
+          Button("Saved Connections", systemImage: "rectangle.stack") { showingLibrary = true }
+            .accessibilityIdentifier("library.open")
           Spacer()
           Button("Connect", systemImage: "arrow.up.right") { connect() }
             .buttonStyle(.borderedProminent).controlSize(.large)
@@ -177,11 +189,6 @@ private struct MacConnectionForm: View {
         }
       }.padding(36).frame(maxWidth: 660)
         .frame(maxWidth: .infinity)
-    }
-    .navigationTitle("Pocahontas")
-    .toolbar {
-      Button("Saved Connections", systemImage: "rectangle.stack") { showingLibrary = true }
-        .accessibilityIdentifier("library.open")
     }
     .sheet(
       isPresented: $showingLibrary,
@@ -236,46 +243,10 @@ private struct MacConnectionForm: View {
 
 private struct MacTerminalScreen: View {
   @Bindable var terminal: TerminalController
-  var onClose: () -> Void
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 8) {
-        Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning)
-          .frame(width: 7, height: 7)
-        Text(terminal.status).font(.callout)
-          .accessibilityElement(children: .ignore).accessibilityLabel(terminal.status)
-          .accessibilityIdentifier("terminal.status")
-        Spacer()
-        Text(terminal.endpoint).font(.callout).foregroundStyle(.secondary)
-      }.padding(14).accessibilityElement(children: .contain)
-      Divider()
-      if case .failed(let message) = terminal.state {
-        Text(message).foregroundStyle(AppAppearance.warning).padding()
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .accessibilityElement(children: .ignore).accessibilityLabel(message)
-          .accessibilityIdentifier("terminal.error")
-      }
-      MacTerminalHost(surface: terminal.surface).padding(12)
-      Divider()
-      HStack {
-        Text("⌘C Copy  ·  ⌘V Paste  ·  Option = Alt").font(.caption).foregroundStyle(.secondary)
-        Spacer()
-        Text("SSH · Ghostty").font(.caption).foregroundStyle(.secondary)
-      }.padding(12)
-    }
-    .navigationTitle(terminal.title)
-    .toolbar {
-      ToolbarItem(placement: .navigation) {
-        Button("Close Connection", systemImage: "xmark") {
-          onClose()
-        }.accessibilityIdentifier("terminal.close")
-      }
-      ToolbarItemGroup {
-        Button("Copy", systemImage: "doc.on.doc") { terminal.surface.copy(nil) }
-          .accessibilityIdentifier("terminal.copy")
-        Button("Paste", systemImage: "doc.on.clipboard") { terminal.surface.paste(nil) }
-          .disabled(terminal.state != .ready).accessibilityIdentifier("terminal.paste")
-      }
+      TerminalConnectionNotice(terminal: terminal)
+      MacTerminalHost(surface: terminal.surface).padding(8)
     }
     .alert(
       "Trust this server?",
@@ -324,24 +295,83 @@ private struct MacTerminalHost: NSViewRepresentable {
 /// Each window owns all its sessions, including when closed through the red window button.
 private struct WindowLifetime: NSViewRepresentable {
   var onClose: () -> Void
-  func makeNSView(context: Context) -> LifetimeView { LifetimeView(onClose: onClose) }
-  func updateNSView(_ view: LifetimeView, context: Context) { view.onClose = onClose }
+  var onActivate: () -> Void
+  var onDeactivate: () -> Void
+  func makeNSView(context: Context) -> LifetimeView {
+    LifetimeView(onClose: onClose, onActivate: onActivate, onDeactivate: onDeactivate)
+  }
+  func updateNSView(_ view: LifetimeView, context: Context) {
+    view.onClose = onClose
+    view.onActivate = onActivate
+    view.onDeactivate = onDeactivate
+  }
 
   final class LifetimeView: NSView {
     var onClose: () -> Void
-    init(onClose: @escaping () -> Void) {
+    var onActivate: () -> Void
+    var onDeactivate: () -> Void
+    init(
+      onClose: @escaping () -> Void, onActivate: @escaping () -> Void,
+      onDeactivate: @escaping () -> Void
+    ) {
       self.onClose = onClose
+      self.onActivate = onActivate
+      self.onDeactivate = onDeactivate
       super.init(frame: .zero)
     }
     required init?(coder: NSCoder) { fatalError("Not supported") }
     override func viewDidMoveToWindow() {
       NotificationCenter.default.removeObserver(self)
+      NSWorkspace.shared.notificationCenter.removeObserver(self)
       if let window {
+        // A toolbar opts into Tahoe's larger window corners. This window uses the
+        // native titlebar-only shape, with content extending behind its hidden title.
+        window.toolbar = nil
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.titlebarSeparatorStyle = .none
+        window.tabbingMode = .disallowed
+        NSWorkspace.shared.notificationCenter.addObserver(
+          self, selector: #selector(activate), name: NSWorkspace.didWakeNotification, object: nil)
+        NotificationCenter.default.addObserver(
+          self, selector: #selector(activate), name: NSApplication.didBecomeActiveNotification,
+          object: nil)
+        NotificationCenter.default.addObserver(
+          self, selector: #selector(activate), name: NSWindow.didBecomeKeyNotification,
+          object: window)
+        NotificationCenter.default.addObserver(
+          self, selector: #selector(deactivate), name: NSWindow.didResignKeyNotification,
+          object: window)
         NotificationCenter.default.addObserver(
           self, selector: #selector(close), name: NSWindow.willCloseNotification, object: window)
       }
     }
     @objc private func close() { onClose() }
-    deinit { NotificationCenter.default.removeObserver(self) }
+    @objc private func activate() { if window?.isKeyWindow == true { onActivate() } }
+    @objc private func deactivate() { onDeactivate() }
+    deinit {
+      NotificationCenter.default.removeObserver(self)
+      NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+  }
+}
+
+private struct SessionWindowDrag: ViewModifier {
+  @ViewBuilder func body(content: Content) -> some View {
+    if #available(macOS 15, *) {
+      content.simultaneousGesture(WindowDragGesture())
+    } else {
+      content
+    }
+  }
+}
+
+/// A dedicated drag area for macOS 14, which predates WindowDragGesture.
+struct WindowDragArea: NSViewRepresentable {
+  func makeNSView(context: Context) -> DragView { DragView() }
+  func updateNSView(_ view: DragView, context: Context) {}
+  final class DragView: NSView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
   }
 }

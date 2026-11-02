@@ -43,11 +43,13 @@ for DEVICE in iphone ipad; do
   xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' \
     --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
   echo "Capturing $DEVICE; log: $RUN_DIR/$DEVICE.log"
-  xcodebuild -project pocahontas.xcodeproj -scheme session-screenshots \
+  # Explicitly forward the fixture port to the simulator's app test runner.
+  TEST_RUNNER_POCAHONTAS_SESSION_TEST_PORT=62226 \
+    xcodebuild -project pocahontas.xcodeproj -scheme session-screenshots \
     -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
     -derivedDataPath .build/DerivedData -resultBundlePath "$RUN_DIR/$DEVICE.xcresult" \
     -parallel-testing-enabled NO -disableAutomaticPackageResolution test > "$RUN_DIR/$DEVICE.log" 2>&1
-  "$PYTHON" scripts/export-screenshots.py "$RUN_DIR/$DEVICE.xcresult" "docs/screenshots/sessions/$DEVICE" --count 12
+  "$PYTHON" scripts/export-screenshots.py "$RUN_DIR/$DEVICE.xcresult" "docs/screenshots/sessions/$DEVICE" --count 13
   xcrun simctl shutdown "$SIMULATOR_ID"
   xcrun simctl delete "$SIMULATOR_ID"
   SIMULATOR_ID=""

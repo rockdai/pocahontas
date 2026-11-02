@@ -10,6 +10,7 @@ final class PTYHandler: ChannelDuplexHandler, @unchecked Sendable {
 
   enum Phase { case idle, pty, shell, running, closed }
   private(set) var phase = Phase.idle
+  private(set) var remoteExited = false
   private var size: TerminalSize
   private var requestedSize: TerminalSize
   private var pendingBytes = 0
@@ -65,8 +66,12 @@ final class PTYHandler: ChannelDuplexHandler, @unchecked Sendable {
         errorCaught(context: context, error: SSHSessionError.startupRejected)
       }
     case let status as SSHChannelRequestEvent.ExitStatus:
+      remoteExited = true
       if status.exitStatus != 0 { exitError = RemoteExit(status: status.exitStatus) }
+    case is SSHChannelRequestEvent.ExitSignal:
+      remoteExited = true
     case ChannelEvent.inputClosed:
+      remoteExited = true
       context.close(promise: nil)
     default: context.fireUserInboundEventTriggered(event)
     }

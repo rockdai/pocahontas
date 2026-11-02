@@ -23,5 +23,5 @@ xcodebuild -project pocahontas.xcodeproj -scheme pocahontas-macOS \
   -disableAutomaticPackageResolution "POCAHONTAS_MAC_TEST_PORT=$PORT" \
   -only-testing:PocahontasMacTests -only-testing:PocahontasMacUITests/SessionTests \
   test > "$RUN_DIR/test.log" 2>&1
-"$PYTHON" scripts/export-screenshots.py "$RUN_DIR/macOS.xcresult" docs/screenshots/sessions/mac --count 8 --desktop
+"$PYTHON" scripts/export-screenshots.py "$RUN_DIR/macOS.xcresult" docs/screenshots/sessions/mac --count 9 --desktop
 echo "Mac session screenshots exported; results: $RUN_DIR/macOS.xcresult"

@@ -1,4 +1,5 @@
 import Foundation
+import NIOCore
 import XCTest
 
 @testable import PocahontasKit
@@ -52,6 +53,47 @@ final class SSHIntegrationTests: XCTestCase, @unchecked Sendable {
     session.send(payload)
     await fulfillment(of: [echoed, resized], timeout: 10)
     XCTAssertNotNil(try store.key(for: connection.hostIdentity))
+  }
+
+  func testActivationProbePreservesShellAndTimesOutOnSilentConnectionLoss() async throws {
+    let connection = try connection()
+    let ready = expectation(description: "ready")
+    let echo = expectation(description: "same shell still echoes")
+    let limited = expectation(description: "server channel limit enabled")
+    let lost = expectation(description: "silent connection failed")
+    let session = SSHSession(
+      connection: connection, credentials: try .init(authentication: .password("pocahontas-test")),
+      knownHosts: MemoryKnownHosts(), onTrust: { _, reply in reply(true) },
+      onOutput: { data, done in
+        if String(decoding: data, as: UTF8.self).contains("AFTER_PROBE") { echo.fulfill() }
+        if String(decoding: data, as: UTF8.self).contains("PROBES_REJECTED") { limited.fulfill() }
+        done()
+      },
+      onTermination: { reason in XCTAssertEqual(reason, .connectionLost) },
+      onState: { state in
+        if state == .ready { ready.fulfill() }
+        if case .failed = state { lost.fulfill() }
+      })
+    session.start()
+    await fulfillment(of: [ready], timeout: 10)
+    async let first = session.checkConnection(timeout: .seconds(2))
+    async let duplicate = session.checkConnection(timeout: .seconds(2))
+    let answers = await [first, duplicate]
+    XCTAssertEqual(answers, [true, true])
+    session.send(Data("AFTER_PROBE".utf8))
+    await fulfillment(of: [echo], timeout: 3)
+    session.send(Data("__POCAHONTAS_REJECT_PROBES__".utf8))
+    await fulfillment(of: [limited], timeout: 3)
+    let channelLimitIsAlive = await session.checkConnection(timeout: .seconds(2))
+    XCTAssertTrue(channelLimitIsAlive, "A channel-limit rejection still proves transport liveness")
+    session.send(Data("__POCAHONTAS_BLACKHOLE__".utf8))
+    try await Task.sleep(for: .milliseconds(100))
+    let alive = await session.checkConnection(timeout: .milliseconds(200))
+    XCTAssertFalse(alive)
+    await fulfillment(of: [lost], timeout: 2)
+    let closed = await session.checkConnection()
+    XCTAssertFalse(closed)
+    session.stop()
   }
 
   func testChangedHostKeyBlocksAuthentication() async throws {

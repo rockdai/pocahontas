@@ -18,7 +18,9 @@ final class ConnectionTests: XCTestCase {
     replace(app.textFields["connection.port"], "22")
     replace(app.textFields["connection.username"], "")
     capture("01-connection-empty", window)
-    replace(app.textFields["connection.host"], "127.0.0.1")
+    // Unit tests trust 127.0.0.1 on this port. Use a distinct loopback identity
+    // so this UI flow can still exercise first-use trust without deleting pins.
+    replace(app.textFields["connection.host"], "localhost")
     replace(
       app.textFields["connection.port"],
       ProcessInfo.processInfo.environment["POCAHONTAS_MAC_TEST_PORT"] ?? "62225")
@@ -35,30 +37,34 @@ final class ConnectionTests: XCTestCase {
     app.buttons["connection.connect"].click()
     XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("05-error-invalid-key", window)
-    app.buttons["terminal.close"].click()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.click()
     app.radioButtons["SSH key"].click()
     app.buttons["connection.import"].click()
     XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 10))
     capture("06-import-key-file", window)
-    app.buttons["Cancel"].click()
+    app.windows.firstMatch.buttons["Cancel"].firstMatch.click()
 
     app.radioButtons["Password"].click()
     replace(app.secureTextFields["connection.password"], "pocahontas-test")
     app.buttons["connection.connect"].click()
-    let trust = app.buttons["Trust and connect"]
+    let trust = app.windows.firstMatch.buttons["Trust and connect"].firstMatch
     XCTAssertTrue(trust.waitForExistence(timeout: 15))
     capture("07-host-trust", window)
-    app.buttons["Cancel"].click()
+    app.windows.firstMatch.buttons["Cancel"].firstMatch.click()
     XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("08-error-trust-declined", window)
-    app.buttons["terminal.close"].click()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.click()
     replace(app.secureTextFields["connection.password"], "pocahontas-test")
     app.buttons["connection.connect"].click()
     XCTAssertTrue(trust.waitForExistence(timeout: 10))
     trust.click()
     XCTAssertTrue(
-      app.descendants(matching: .any).matching(identifier: "terminal.status").matching(
-        NSPredicate(format: "label == %@", "Connected")
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "session.select.")
+      ).matching(
+        NSPredicate(format: "label CONTAINS %@", "Connected")
       ).firstMatch.waitForExistence(timeout: 20))
     capture("09-terminal-connected", window)
 
@@ -72,11 +78,11 @@ final class ConnectionTests: XCTestCase {
       (NSPasteboard.general.string(forType: .string) ?? "").contains("pocahontas SSH fixture"))
     capture("11-terminal-selection", window)
 
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(
-      "cd ~/projects/pocahontas\ngit status\ntmux attach -t agent", forType: .string)
+    // Paste the multiline selection copied by this app. This exercises Cmd-V and
+    // the preview without a cross-app pasteboard permission prompt from the runner.
     terminal.typeKey("v", modifierFlags: .command)
-    XCTAssertTrue(app.staticTexts["Paste multiple lines?"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["Paste multiple lines?"].waitForExistence(timeout: 5))
     capture("12-paste-preview", window)
     app.sheets.buttons["Paste"].click()
     capture("13-terminal-after-paste", window)
@@ -88,18 +94,22 @@ final class ConnectionTests: XCTestCase {
     capture("14-new-connection-window", app.windows.firstMatch)
     app.typeKey("w", modifierFlags: .command)
     XCTAssertTrue(
-      app.descendants(matching: .any).matching(identifier: "terminal.status").matching(
-        NSPredicate(format: "label == %@", "Connected")
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "session.select.")
+      ).matching(
+        NSPredicate(format: "label CONTAINS %@", "Connected")
       ).firstMatch.waitForExistence(timeout: 5))
     XCTAssertEqual(app.windows.count, 1)
 
-    app.buttons["terminal.close"].click()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.click()
     replace(app.secureTextFields["connection.password"], "wrong-password")
     app.buttons["connection.connect"].click()
     XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.buttons["Trust and connect"].exists, "The accepted host pin must persist")
     capture("15-error-authentication", window)
-    app.buttons["terminal.close"].click()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.click()
     replace(app.textFields["connection.port"], "0")
     replace(app.secureTextFields["connection.password"], "pocahontas-test")
     app.buttons["connection.connect"].click()

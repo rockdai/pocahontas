@@ -27,6 +27,7 @@ class Server(paramiko.ServerInterface):
     def __init__(self):
         self.shell = threading.Event()
         self.channel = None
+        self.reject_probes = False
 
     def get_allowed_auths(self, username):
         return 'password,publickey'
@@ -38,6 +39,8 @@ class Server(paramiko.ServerInterface):
         return paramiko.AUTH_SUCCESSFUL if username == 'fixture' and key.asbytes() == allowed_key else paramiko.AUTH_FAILED
 
     def check_channel_request(self, kind, chanid):
+        if self.reject_probes and self.channel is not None:
+            return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
         return paramiko.OPEN_SUCCEEDED if kind == 'session' else paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
     def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
@@ -54,7 +57,21 @@ class Server(paramiko.ServerInterface):
         return True
 
 
+class MutedSocket:
+    """Test a half-open connection without changing the machine's network settings."""
+    def __init__(self, socket):
+        self.socket = socket
+        self.muted = False
+
+    def send(self, data, *args):
+        return len(data) if self.muted else self.socket.send(data, *args)
+
+    def __getattr__(self, name):
+        return getattr(self.socket, name)
+
+
 def handle(client):
+    client = MutedSocket(client)
     transport = paramiko.Transport(client)
     transport.add_server_key(host_key)
     server = Server()
@@ -66,10 +83,27 @@ def handle(client):
         time.sleep(0.05)
         channel.sendall(b'\x1b[2J\x1b[H\x1b[32mpocahontas SSH fixture\x1b[0m\r\n')
         channel.sendall('Connected through SSH. 中文输入 / resize / binary echo\r\n$ '.encode())
+        recent = b''
         while transport.is_active():
             data = channel.recv(32768)
             if not data:
                 break
+            recent = (recent + data)[-256:]
+            if b'__POCAHONTAS_REJECT_PROBES__' in recent:
+                server.reject_probes = True
+                recent = b''
+                channel.sendall(b'PROBES_REJECTED')
+                continue
+            if b'__POCAHONTAS_DROP__' in recent:
+                transport.close()
+                break
+            if b'__POCAHONTAS_EXIT__' in recent:
+                channel.send_exit_status(0)
+                channel.close()
+                break
+            if b'__POCAHONTAS_BLACKHOLE__' in recent:
+                client.muted = True
+                continue
             channel.sendall(data)
     except (EOFError, OSError, paramiko.SSHException):
         pass

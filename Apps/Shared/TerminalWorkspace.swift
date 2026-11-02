@@ -13,14 +13,21 @@ final class TerminalWorkspace {
   var selected: TerminalController? { sessions.first { $0.id == selectedID } }
 
   func showNewConnection() {
+    selected?.deactivate()
     selected?.leaveInput()
     selectedID = nil
   }
 
   func select(_ id: UUID) {
-    guard sessions.contains(where: { $0.id == id }), selectedID != id else { return }
+    guard sessions.contains(where: { $0.id == id }) else { return }
+    if selectedID == id {
+      activateSelected()
+      return
+    }
+    selected?.deactivate()
     selected?.leaveInput()
     selectedID = id
+    activateSelected()
   }
 
   func selectNext(backwards: Bool = false) {
@@ -54,13 +61,17 @@ final class TerminalWorkspace {
     return terminal
   }
 
+  func activateSelected() { selected?.activate() }
+  func deactivateSelected() { selected?.deactivate() }
+
   func openSaved(_ pending: PendingSavedConnection) {
     guard pending.generation == LibraryServices.shared.library?.accountGeneration else { return }
+    let generation = pending.generation
     open(
       host: pending.binding.host, port: String(pending.binding.port),
       username: pending.binding.username, authentication: pending.authentication,
       stillAuthorized: {
-        pending.generation == LibraryServices.shared.library?.accountGeneration
+        generation == LibraryServices.shared.library?.accountGeneration
       })
   }
 
@@ -71,6 +82,7 @@ final class TerminalWorkspace {
     sessions.remove(at: index)
     if selectedID == id {
       selectedID = sessions.isEmpty ? nil : sessions[min(index, sessions.count - 1)].id
+      activateSelected()
     }
   }
 
@@ -82,12 +94,16 @@ final class TerminalWorkspace {
     selectedID = nil
   }
 
-  func suspendAll(reason: String? = nil) {
+  func suspendAll(reason: String? = nil, allowReconnect: Bool = true) {
     // Also cancel tasks which have not entered connect() yet.
     connecting.values.forEach { $0.cancel() }
     connecting.removeAll()
     for terminal in sessions {
-      if let reason { terminal.suspend(reason: reason) } else { terminal.suspend() }
+      if let reason {
+        terminal.suspend(reason: reason, allowReconnect: allowReconnect)
+      } else {
+        terminal.suspend(allowReconnect: allowReconnect)
+      }
     }
   }
 }

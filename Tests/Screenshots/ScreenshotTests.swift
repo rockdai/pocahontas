@@ -43,9 +43,10 @@ final class ScreenshotTests: XCTestCase {
     app.swipeUp()
     XCTAssertTrue(app.buttons["connection.connect"].isEnabled)
     app.buttons["connection.connect"].tap()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("06-error-invalid-key", app)
-    app.buttons["Close"].tap()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.tap()
 
     app.buttons["SSH key"].tap()
     let importButton = app.buttons["Import Ed25519 key from Files"]
@@ -69,9 +70,10 @@ final class ScreenshotTests: XCTestCase {
     capture("10-host-trust-landscape", app)
     XCUIDevice.shared.orientation = .portrait
     trust.buttons["Cancel"].tap()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("11-error-trust-declined", app)
-    app.buttons["Close"].tap()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.tap()
 
     password.tap()
     password.typeText("pocahontas-test")
@@ -79,8 +81,10 @@ final class ScreenshotTests: XCTestCase {
     XCTAssertTrue(trust.waitForExistence(timeout: 10))
     trust.buttons["Trust and connect"].tap()
     XCTAssertTrue(
-      app.staticTexts.matching(identifier: "terminal.status").matching(
-        NSPredicate(format: "label == %@", "Connected")
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "session.select.")
+      ).matching(
+        NSPredicate(format: "label CONTAINS %@", "Connected")
       ).firstMatch.waitForExistence(timeout: 20))
     capture("12-terminal-connected", app)
     XCUIDevice.shared.orientation = .landscapeLeft
@@ -117,23 +121,25 @@ final class ScreenshotTests: XCTestCase {
 
     XCUIDevice.shared.press(.home)
     app.activate()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("20-error-background-disconnect", app)
-    app.buttons["Close"].tap()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.tap()
     password.tap()
     password.typeText("wrong-password")
     app.buttons["connection.connect"].tap()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("21-error-authentication", app)
     XCUIDevice.shared.orientation = .landscapeLeft
     capture("22-error-authentication-landscape", app)
     XCUIDevice.shared.orientation = .portrait
-    app.buttons["Close"].tap()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.tap()
     replace(app.textFields["connection.port"], with: "0")
     password.tap()
     password.typeText("test-only")
     app.buttons["connection.connect"].tap()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 10))
     capture("23-error-invalid-port", app)
   }
 

@@ -43,10 +43,15 @@ public enum SSHSessionState: Sendable, Equatable {
   case failed(String)
 }
 
+/// Whether an ended connection may be recovered on the next activation.
+public enum SSHSessionTermination: Sendable {
+  case connectionLost, closed, rejected
+}
+
 public enum SSHSessionError: LocalizedError, Sendable {
   case invalidConnection, invalidPrivateKey, unsupportedPrivateKey, hostKeyRejected
   case hostKeyChanged(previous: String, presented: String)
-  case startupRejected, authenticationRejected, timeout, bufferLimit, notReady
+  case startupRejected, authenticationRejected, timeout, bufferLimit, notReady, connectionLost
 
   public var errorDescription: String? {
     switch self {
@@ -64,6 +69,7 @@ public enum SSHSessionError: LocalizedError, Sendable {
     case .timeout: return "The connection did not become ready in time."
     case .bufferLimit:
       return "The terminal could not keep up with the connection. Reconnect to continue."
+    case .connectionLost: return "The server stopped responding. Reconnect to continue."
     case .notReady: return "The terminal is not connected."
     }
   }

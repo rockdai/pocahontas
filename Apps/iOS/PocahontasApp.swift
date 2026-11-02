@@ -54,7 +54,7 @@ struct SessionWorkspaceView: View {
       SessionBar(workspace: workspace)
       Divider()
       if let terminal = workspace.selected {
-        TerminalScreen(terminal: terminal, onClose: { workspace.close(terminal.id) })
+        TerminalScreen(terminal: terminal)
           .id(terminal.id)
       } else {
         ConnectionView(workspace: workspace)
@@ -62,10 +62,13 @@ struct SessionWorkspaceView: View {
     }
     .onChange(of: scenePhase) { _, phase in
       if phase == .background { workspace.suspendAll() }
+      if phase == .active { workspace.activateSelected() }
+      if phase != .active { workspace.deactivateSelected() }
     }
     .onChange(of: LibraryServices.shared.library?.accountGeneration) { _, _ in
       workspace.suspendAll(
-        reason: "The connection library changed. Connect again using the current account.")
+        reason: "The connection library changed. Connect again using the current account.",
+        allowReconnect: false)
     }
     .overlay {
       if scenePhase != .active {
@@ -135,7 +138,7 @@ struct ConnectionView: View {
           Text("Authentication")
         } footer: {
           Text(
-            "Quick Connect uses credentials once. Open Saved Connections to save a server or manage iCloud sync."
+            "Quick Connect keeps credentials in memory until the tab closes, including for reconnecting. Use Saved Connections to save a server or manage iCloud sync."
           )
         }.textInputAutocapitalization(.never).autocorrectionDisabled()
         Section {
@@ -219,84 +222,61 @@ struct ConnectionView: View {
 
 struct TerminalScreen: View {
   @Bindable var terminal: TerminalController
-  var onClose: () -> Void
   @Environment(\.scenePhase) private var scenePhase
   var body: some View {
-    NavigationStack {
-      VStack(spacing: 0) {
-        HStack(spacing: 8) {
-          Circle().fill(terminal.state == .ready ? AppAppearance.accent : AppAppearance.warning)
-            .frame(
-              width: 7, height: 7)
-          Text(terminal.status).font(.caption).accessibilityIdentifier("terminal.status")
-          Spacer()
-        }.padding(.horizontal).padding(.vertical, 10)
-        if case .failed(let message) = terminal.state {
-          Text(message).font(.callout).foregroundStyle(AppAppearance.warning).padding()
-            .accessibilityIdentifier("terminal.error")
-        }
-        TerminalHost(surface: terminal.surface)
-        accessory
+    VStack(spacing: 0) {
+      TerminalConnectionNotice(terminal: terminal)
+      TerminalHost(surface: terminal.surface)
+      accessory
+    }
+    .background(AppAppearance.background)
+    .overlay {
+      if scenePhase != .active {
+        AppAppearance.background
+          .overlay(Label("Pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
       }
-      .background(AppAppearance.background)
-      .navigationTitle(terminal.title).navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .topBarLeading) {
-          Button("Close", systemImage: "xmark") {
-            onClose()
-          }.accessibilityIdentifier("terminal.close")
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Paste", systemImage: "doc.on.clipboard") {
-            if let text = UIPasteboard.general.string { terminal.requestPaste(text) }
-          }.disabled(terminal.state != .ready)
-        }
+    }
+    .alert(
+      "Trust this server?",
+      isPresented: Binding(
+        get: { terminal.challenge != nil }, set: { if !$0 { terminal.answerTrust(false) } })
+    ) {
+      Button("Cancel", role: .cancel) { terminal.answerTrust(false) }
+      Button("Trust and connect") { terminal.answerTrust(true) }
+    } message: {
+      if let challenge = terminal.challenge {
+        Text(
+          "\(challenge.host)\n\n\(challenge.fingerprint)\n\nCompare this fingerprint with the server before trusting it. It will be saved on this device."
+        )
       }
-      .overlay {
-        if scenePhase != .active {
-          AppAppearance.background
-            .overlay(Label("Pocahontas", systemImage: "terminal").font(.title2)).ignoresSafeArea()
+    }
+    .sheet(
+      isPresented: Binding(
+        get: { terminal.pastePreview != nil }, set: { if !$0 { terminal.pastePreview = nil } })
+    ) {
+      NavigationStack {
+        ScrollView {
+          Text(terminal.pastePreview ?? "").font(.system(.body, design: .monospaced)).padding()
         }
-      }
-      .alert(
-        "Trust this server?",
-        isPresented: Binding(
-          get: { terminal.challenge != nil }, set: { if !$0 { terminal.answerTrust(false) } })
-      ) {
-        Button("Cancel", role: .cancel) { terminal.answerTrust(false) }
-        Button("Trust and connect") { terminal.answerTrust(true) }
-      } message: {
-        if let challenge = terminal.challenge {
-          Text(
-            "\(challenge.host)\n\n\(challenge.fingerprint)\n\nCompare this fingerprint with the server before trusting it. It will be saved on this device."
-          )
-        }
-      }
-      .sheet(
-        isPresented: Binding(
-          get: { terminal.pastePreview != nil }, set: { if !$0 { terminal.pastePreview = nil } })
-      ) {
-        NavigationStack {
-          ScrollView {
-            Text(terminal.pastePreview ?? "").font(.system(.body, design: .monospaced)).padding()
+        .navigationTitle("Paste multiple lines?")
+        .toolbar {
+          ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { terminal.pastePreview = nil }
           }
-          .navigationTitle("Paste multiple lines?")
-          .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-              Button("Cancel") { terminal.pastePreview = nil }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-              Button("Paste") { terminal.confirmPaste() }
-            }
+          ToolbarItem(placement: .confirmationAction) {
+            Button("Paste") { terminal.confirmPaste() }
           }
-        }.presentationDetents([.medium, .large])
-      }
+        }
+      }.presentationDetents([.medium, .large])
     }
   }
 
   private var accessory: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 8) {
+        Button("Paste", systemImage: "doc.on.clipboard") {
+          if let text = UIPasteboard.general.string { terminal.requestPaste(text) }
+        }.accessibilityIdentifier("terminal.paste")
         key("Esc", .escape)
         key("Tab", .tab)
         Button("Ctrl") { terminal.relay.toggle(.ctrl) }
