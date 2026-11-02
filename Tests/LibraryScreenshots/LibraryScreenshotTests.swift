@@ -55,8 +55,10 @@ final class LibraryScreenshotTests: XCTestCase {
     XCTAssertTrue(app.alerts["Trust this server?"].waitForExistence(timeout: 15))
     app.alerts["Trust this server?"].buttons["Trust and connect"].tap()
     XCTAssertTrue(
-      app.staticTexts.matching(identifier: "terminal.status").matching(
-        NSPredicate(format: "label == %@", "Connected")
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "session.select.")
+      ).matching(
+        NSPredicate(format: "label CONTAINS %@", "Connected")
       ).firstMatch.waitForExistence(timeout: 15))
     capture("11-saved-terminal", app)
     landscape("12-saved-terminal-landscape", app)
@@ -71,7 +73,8 @@ final class LibraryScreenshotTests: XCTestCase {
     waitForExpectations(timeout: 15)
     XCTAssertTrue(app.buttons["session.select.1"].label.contains("Connected"))
     app.buttons["session.close.2"].tap()
-    app.buttons["Close"].tap()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.tap()
     app.buttons["library.open"].tap()
 
     app.buttons["library.identities"].tap()

@@ -16,23 +16,28 @@ final class ConnectionTests: XCTestCase {
     app.buttons["connection.connect"].tap()
     let trust = app.alerts.buttons["Trust and connect"]
     if trust.waitForExistence(timeout: 5) { trust.tap() }
-    let connected = app.staticTexts.matching(identifier: "terminal.status").matching(
-      NSPredicate(format: "label == %@", "Connected")
+    let connected = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "session.select.")
+    ).matching(
+      NSPredicate(format: "label CONTAINS %@", "Connected")
     ).firstMatch
     XCTAssertTrue(connected.waitForExistence(timeout: 20))
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "SSH terminal connected"
     shot.lifetime = .keepAlways
     add(shot)
-    app.buttons["Close"].tap()
+    app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.close."))
+      .firstMatch.tap()
     XCTAssertTrue(password.waitForExistence(timeout: 5))
     password.tap()
     password.typeText("wrong-password")
     app.buttons["connection.connect"].tap()
-    XCTAssertTrue(app.staticTexts["terminal.error"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.descendants(matching: .any)["terminal.error"].waitForExistence(timeout: 20))
     XCTAssertFalse(
-      app.staticTexts.matching(identifier: "terminal.status").matching(
-        NSPredicate(format: "label == %@", "Connected")
+      app.buttons.matching(
+        NSPredicate(format: "identifier BEGINSWITH %@ AND selected == true", "session.select.")
+      ).matching(
+        NSPredicate(format: "label CONTAINS %@", "Connected")
       ).firstMatch.exists)
   }
 

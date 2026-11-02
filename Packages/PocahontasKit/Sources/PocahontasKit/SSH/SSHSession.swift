@@ -23,6 +23,9 @@ public final class SSHSession: @unchecked Sendable {
   private var timeout: Scheduled<Void>?
   private var started = false
   private var closed = false
+  private var probe: EventLoopPromise<Bool>?
+  private var probeTimeout: Scheduled<Void>?
+  private let onTermination: @Sendable (SSHSessionTermination) -> Void
 
   public init(
     connection: SSHConnection, credentials: SSHCredentials,
@@ -30,6 +33,7 @@ public final class SSHSession: @unchecked Sendable {
     knownHosts: any KnownHostsStore = KeychainKnownHosts(),
     onTrust: @escaping TrustHandler,
     onOutput: @escaping OutputHandler,
+    onTermination: @escaping @Sendable (SSHSessionTermination) -> Void = { _ in },
     onState: @escaping @Sendable (SSHSessionState) -> Void
   ) {
     self.connection = connection
@@ -37,6 +41,7 @@ public final class SSHSession: @unchecked Sendable {
     self.size = size
     self.onOutput = onOutput
     self.onState = onState
+    self.onTermination = onTermination
     loop = Self.group.next()
     verifier = HostVerifier(host: connection.hostIdentity, store: knownHosts, prompt: onTrust)
   }
@@ -98,7 +103,11 @@ public final class SSHSession: @unchecked Sendable {
             self.timeout?.cancel()
             self.timeout = nil
             self.onState(.ready)
-          }, onOutput: onOutput, onClose: { [weak self] error in self?.finish(error) })
+          }, onOutput: onOutput,
+          onClose: { [weak self] error in
+            guard let self else { return }
+            self.finish(error, reason: self.pty?.remoteExited == true ? .closed : .connectionLost)
+          })
         self.pty = pty
         self.child = child
         return child.setOption(ChannelOptions.allowRemoteHalfClosure, value: true)
@@ -138,9 +147,59 @@ public final class SSHSession: @unchecked Sendable {
     }
   }
 
-  public func stop() { loop.execute { [self] in finish(nil) } }
+  /// Opening and immediately closing an empty SSH channel checks the existing transport
+  /// without writing to the terminal or executing a command. Even a channel-limit rejection
+  /// proves the peer is alive. A deadline also catches silently dropped TCP connections.
+  public func checkConnection(timeout: TimeAmount = .seconds(5)) async -> Bool {
+    let result = loop.makePromise(of: Bool.self)
+    loop.execute { [self] in
+      guard !closed, let parent, parent.isActive, let pty, pty.phase == .running else {
+        result.succeed(false)
+        return
+      }
+      if let probe {
+        probe.futureResult.cascade(to: result)
+        return
+      }
+      probe = result
+      probeTimeout = loop.scheduleTask(in: timeout) { [weak self] in
+        self?.finish(SSHSessionError.connectionLost)
+      }
+      do {
+        let handler = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
+        let opened = loop.makePromise(of: Channel.self)
+        handler.createChannel(opened, channelType: .session) { channel, _ in
+          channel.eventLoop.makeSucceededVoidFuture()
+        }
+        opened.futureResult.whenComplete { [weak self] outcome in
+          if case .success(let channel) = outcome { channel.close(promise: nil) }
+          guard let self, !self.closed else { return }
+          switch outcome {
+          case .success: self.completeProbe(true)
+          case .failure(let error):
+            if let sshError = error as? NIOSSHError, sshError.type == .channelSetupRejected {
+              self.completeProbe(true)
+            } else {
+              self.finish(error)
+            }
+          }
+        }
+      } catch { finish(error) }
+    }
+    return (try? await result.futureResult.get()) ?? false
+  }
 
-  private func finish(_ error: Error?) {
+  private func completeProbe(_ alive: Bool) {
+    probeTimeout?.cancel()
+    probeTimeout = nil
+    let pending = probe
+    probe = nil
+    pending?.succeed(alive)
+  }
+
+  public func stop() { loop.execute { [self] in finish(nil, reason: .closed) } }
+
+  private func finish(_ error: Error?, reason: SSHSessionTermination = .connectionLost) {
     loop.preconditionInEventLoop()
     guard !closed else { return }
     closed = true
@@ -152,14 +211,33 @@ public final class SSHSession: @unchecked Sendable {
     child = nil
     parent = nil
     pty = nil
+    let termination: SSHSessionTermination
+    if let error = error as? NIOSSHError {
+      termination =
+        error.type == .tcpShutdown || error.type == .creatingChannelAfterClosure
+        ? .connectionLost : .rejected
+    } else if let error = error as? SSHSessionError {
+      switch error {
+      case .hostKeyRejected, .hostKeyChanged, .authenticationRejected, .startupRejected:
+        termination = .rejected
+      default: termination = reason
+      }
+    } else {
+      termination = reason
+    }
+    onTermination(termination)
     onState(error.map { .failed(Self.describe($0)) } ?? .disconnected)
+    completeProbe(false)
   }
 
   private static func describe(_ error: Error) -> String {
     if let error = error as? LocalizedError, let description = error.errorDescription {
       return description
     }
-    if error is NIOSSHError {
+    if let error = error as? NIOSSHError {
+      if error.type == .tcpShutdown || error.type == .creatingChannelAfterClosure {
+        return "The SSH connection was lost. Activate this session or reconnect to continue."
+      }
       return "SSH negotiation or authentication failed. Check the server and credentials."
     }
     return error.localizedDescription
