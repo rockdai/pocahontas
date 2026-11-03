@@ -1,10 +1,10 @@
 # pocahontas 产品与终端架构
 
-设计日期：2026-10-25；平台范围更新：2026-10-31。本文定义首版建议方案和实施验收条件；具体依赖版本需通过集成验证后锁定。
+设计日期：2026-10-25；后台与多端方案更新：2026-11-03。本文定义首版建议方案和实施验收条件；具体依赖版本需通过集成验证后锁定。
 
 pocahontas 是面向 coding agent 的原生终端客户端。首版同时让用户在 iPhone、iPad 与原生 macOS 上连接自己的开发机器，使用完整 TUI，离开 App 后让任务继续在远端运行，回来时接回原会话。三端共享连接库与核心逻辑；Mac 使用 SwiftUI + AppKit 原生界面，不通过 Mac Catalyst 或 iPad 兼容模式交付。
 
-建议采用 **Ghostty 完整渲染层 + madeye passthru IO + SSH + 远端 tmux**。SSH 配置和凭据在产品中属于同一个连接库，分别由 CloudKit 和 iCloud Keychain 同步，详见 [SSH 同步设计](ssh-sync.md)。首版不需要自建账号或同步服务器。
+建议采用 **Ghostty 完整渲染层 + madeye passthru IO + SSH + 远端 tmux**。SSH 配置和凭据属于同一个连接库，由客户端加密后交给 Pocahontas 统一后台。后台使用 **Node.js + 阿里云函数计算 + PostgreSQL**，涵盖账号、签名令牌登录、密文存储及同步；不另建同步服务，首期不做设备管理。iCloud 路线取消，无旧版兼容或迁移。详见[后台设计](../server/README.md)与[连接库规则](ssh-sync.md)。Android、原生鸿蒙客户端在后续规划中，协议从第一版覆盖多端。当前 App 中旧 iCloud 代码仍待替换，设计不代表后台已经实现。
 
 ## 首版体验
 
@@ -16,7 +16,7 @@ pocahontas 是面向 coding agent 的原生终端客户端。首版同时让用�
 - 中文输入法、外接键盘、Esc / Tab / Ctrl / Alt / 方向键、文本选择、复制与 bracketed paste。
 - 少量并行会话与会话切换；iPad 侧栏；字体大小。App 与终端固定浅色外观，不提供深浅色切换。
 - 可选的 tmux 持久工作区，以及断线、返回前台后的重新连接。
-- 本地保存连接库；用户开启 iCloud 后同步配置，并逐项选择是否同步凭据。
+- 本地保存连接库；用户用邮箱和密码登录 Pocahontas 后自动解锁并跨设备同步，逐项选择是否共享凭据。
 
 新建工作区时，用户可以指定 agent 启动命令。命令仅在明确启动时执行；重新连接不会再次启动 agent。首版展示连接状态与终端内容，不通过屏幕文字猜测「agent 已完成」或「等待审批」。可靠任务状态与后台通知需要远端 hooks / 服务支持，放在后续版本。
 
@@ -64,7 +64,7 @@ baxian / gterm 曾处理 libxev 的 iOS mach-port 支持，以及 Zig 与特定 
 
 ## 模块与数据流
 
-建议使用 Swift 6，最低 iOS / iPadOS 17，macOS 14。这与 `CKSyncEngine` 的平台基线一致。共享代码使用 Swift Package；iOS SwiftUI + UIKit，macOS SwiftUI + AppKit，平台 view 不强求共用。[Apple 同步示例](https://github.com/apple/sample-cloudkit-sync-engine)
+Apple 端使用 Swift 6，最低 iOS / iPadOS 17、macOS 14；共享代码使用 Swift Package，iOS SwiftUI + UIKit，macOS SwiftUI + AppKit，平台 view 不强求共用。后台协议不依赖 Swift、CloudKit 或特定系统账号。Android/鸿蒙的终端渲染与输入适配另行验证，后台不会代替这些客户端工作。
 
 ```mermaid
 flowchart TB
@@ -77,9 +77,11 @@ flowchart TB
     Ghostty -->|cols / rows| SSH
     SSH <-->|SSH PTY| Remote[远端 shell / tmux / coding agent]
     UI --> Store[连接库本地存储]
-    Store <--> CK[CloudKit 配置同步]
+    Store <--> Crypto[客户端加密与 outbox]
+    Crypto <-->|HTTPS| Server[Pocahontas 后台 · Node.js / FC]
+    Server --> PG[(PostgreSQL · 账号 / 验证码 / 限流 / 密文)]
     Session --> Vault[CredentialVault]
-    Vault <--> KC[本机或 iCloud Keychain]
+    Vault <--> KC[本机安全存储]
 ```
 
 建议目录如下。起步仅建一个共享 package，按目录组织，不为每个类型建立独立 package。
@@ -94,17 +96,19 @@ Packages/PocahontasKit/
     Credentials/             Keychain 存取与认证材料解析
     SSH/                     transport、host key 校验、认证与 PTY
     Sessions/                会话状态与 tmux 工作区
-    Persistence/             本地存储与迁移
-    Sync/                    CloudKit 映射与冲突处理
+    Persistence/             本地账号隔离缓存与 outbox
+    Server/                  账号、登录、API 与客户端加密
+    Sync/                    整份密文快照、版本检查与冲突处理
   Tests/
 Terminal/Ghostty/            隔离 C ABI 的薄 Swift adapter
 Terminal/iOS/                输入法、手势、键盘和渲染层宿主
 Terminal/macOS/              AppKit 渲染宿主、NSTextInputClient 与鼠标输入
+server/                    Node.js 后台设计；后续 FC 代码、SQL 与协议测试
 vendor/ghostty/              固定版本的引擎
 scripts/                     构建、切片验证与集成测试入口
 ```
 
-纯模型、状态与协议逻辑可在 macOS 离线测试；Security / CloudKit 适配器另有平台集成测试。无需为了测试把所有类型都抽象成协议；只在 SSH transport、凭据存取、持久化和同步这几个有替换需求的边界隔离。
+纯模型、状态与协议逻辑可在 macOS 离线测试；本机安全存储与后台 HTTP 适配器另有集成测试。无需为了测试把所有类型都抽象成协议；只在 SSH transport、凭据存取、持久化和同步这几个有替换需求的边界隔离。
 
 ## SSH 连接与恢复
 
@@ -130,7 +134,7 @@ iOS 不提供无限期后台运行保证，因此 keepalive 只用于检测可�
 
 工作区首次创建可使用 `tmux new-session -A -s <安全生成的名字>`；恢复优先 attach 已知 session。session 已消失时提示创建新会话，不自动重启 agent。session 名从 UUID 生成，目录和用户命令按远端 shell 的参数规则处理，不直接拼接未转义内容。用户指定的启动命令属于要执行的内容，必须可见且可编辑。[tmux 会话行为](https://github.com/tmux/tmux/wiki/Getting-Started)
 
-多设备共享的是 tmux 入口，不是 SSH socket 或本地 screen buffer。默认不踢掉其他已连接客户端；「接管」才显式 detach 旧客户端。不同尺寸客户端同时连接时以 tmux 的窗口策略为准，不让 CloudKit 参与尺寸协调。
+多设备共享的是 tmux 入口，不是 SSH socket 或本地 screen buffer。默认不踢掉其他已连接客户端；「接管」才显式 detach 旧客户端。不同尺寸客户端同时连接时以 tmux 的窗口策略为准，不让后台参与终端尺寸协调。
 
 ## 面向 coding agent 的终端约束
 
@@ -146,9 +150,9 @@ iOS 不提供无限期后台运行保证，因此 keepalive 只用于检测可�
 | --- | --- | --- |
 | M0 集成验证 | 固定 Ghostty 与工具链，iPhone / iPad / Mac terminal + SSH | iOS 真机与模拟器、Mac Metal 显示、自动应答、resize、中文输入与桌面快捷键；加密 Ed25519 key 导入与目标服务器认证兼容；形成依赖锁定结果。 |
 | M1 本地首版 | 三端主机、身份、host key 校验、会话切换与 tmux 工作区 | 两种认证、指纹变化阻断、断网与前后台恢复、无输入重复、无 agent 重复启动、长时间输出内存稳定。 |
-| M2 Apple 同步 | CloudKit + Keychain，冲突与账号切换 UI | iPhone、iPad 与正式 macOS App 使用同一账号测试共用 access group；离线编辑、凭据延迟、删除、换号和错误恢复。 |
+| M2 统一后台与多端协议 | Node.js / FC / PostgreSQL，账号、签名登录令牌、端到端加密库与客户端替换 | 跨账号隔离、单次密码登录解锁、多端同时登录、改密码后旧令牌失效、密文互通、离线冲突、单条条件更新、删除、FC 多实例与数据库连接预算。 |
 | 首版发布验收 | 三平台一起交付 | 共用同一连接库与身份；同一 tmux 工作区切换；iPhone / iPad 触控和硬件键盘、Mac 多窗口与 AppKit 输入分别验收。 |
 
-M0、M1、M2 均覆盖三平台，macOS 完整 UI 纳入本次首版，不另排后续阶段。CloudKit 与同步凭据必须在同一开发团队、共用 container / Keychain access group 的签名构建上验证，三平台同步验收通过后才发布。
+M0、M1、M2 均覆盖三平台，macOS 完整 UI 纳入本次首版，不另排后续阶段。Apple 端移除 CloudKit 与 iCloud Keychain 同步，三平台通过同一 Pocahontas 后台验收后才发布；Android/鸿蒙后续使用相同 API，无需另建后端。
 
 2026-10-26 完成 iOS M0，2026-10-31 加入原生 macOS M0，具体依赖选择和验证边界见 [M0 集成记录](m0-integration.md)。真机、双设备同步与长时间性能验收仍待完成。
