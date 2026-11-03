@@ -1,6 +1,6 @@
 # Pocahontas server
 
-更新：2026-11-04。当前交付是设计与 DDL，尚无业务 API 或客户端接入。技术栈为 **Node.js + 阿里云函数计算 + PostgreSQL**；目录与服务名统一使用 `server`。
+更新：2026-11-04。已实现账号 API、邮件验证码、密文存储与 Apple 客户端接入，本地端到端测试通过。技术栈为 **Node.js + 阿里云函数计算 + PostgreSQL**；目录与服务名统一使用 `server`。FC 与真实邮件尚未部署联调。
 
 ## 首期范围
 
@@ -90,14 +90,58 @@ iCloud 路线取消，旧数据不迁移，不兼容未发布的旧版本。SSH 
 
 ## 运行方式
 
-一个 Node ES modules 服务部署到阿里云 FC，原生 `node:http` / `node:crypto` / `node:test`，唯一预期运行时依赖为 `pg`。不引入框架、ORM、Redis、MQ 或独立同步服务。邮件投递通过 HTTPS 适配器，优先原生 fetch。
+一个 Node ES modules 服务部署到阿里云 FC，原生 `node:http` / `node:crypto` / `node:test`，唯一直接运行依赖为 `pg`。不引入框架、ORM、Redis、MQ 或独立同步服务。邮件使用原生 fetch 调用阿里云 DirectMail，3 秒超时，失败仅记录事件与 codeId，不记录验证码或收件地址。
 
 PostgreSQL 与 FC 使用同地域 VPC，连接验证 TLS；连接凭据通过部署配置提供。每个实例复用一个小连接池（初始 max=2），实例上限按数据库连接预算设置。不得每请求新建池；不依赖响应返回后仍会执行的 Promise。过期验证码、限流计数，以及创建超过 24 小时仍未激活的用户，由同代码包的定时清理入口删除；用户清理必须带 password_updated_at IS NULL 条件。原生 crypto 使用异步 API，密码验证前限流。
 
-当前不创建云资源。实际部署时再确定地域、邮件渠道、域名和预算；不预建其他基础设施。
+### 本地运行与测试
+
+需要 Node.js 20+、PostgreSQL。先创建独立空数据库并执行 `schema.sql`，不运行旧数据迁移。配置参见 [.env.example](.env.example)，将本机真实值放在未跟踪的 `server/.env` 中；两个服务端密钥分别用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"` 生成。不要将生成结果提交到 Git。
+
+```sh
+npm ci --prefix server
+# DATABASE_URL 由本机环境提供，只对新建的 Pocahontas 数据库执行
+psql --dbname "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/schema.sql
+cd server
+node --env-file=.env src/main.js
+```
+
+`GET /healthz` 只检查进程存活，不查询数据库。默认监听 `127.0.0.1:9000`。只有 loopback PostgreSQL 可设置 `DATABASE_TLS=false`，远程连接始终验证证书；私有 CA 使用 `DATABASE_CA_FILE`，禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
+
+```sh
+npm test --prefix server
+scripts/test-account.sh
+scripts/capture-account-screenshots.sh
+```
+
+前两项自动创建、建表并销毁临时 PostgreSQL，使用 Unix socket，不访问现有业务库；需 `initdb` / `pg_ctl` 在 PATH，或设置 `PG_BIN`。测试的内存邮件箱和故障注入接口只在 `test/fixture.js` 的 loopback 服务中存在，部署包不包含它们。
+
+### 阿里云 FC 部署
+
+```sh
+scripts/package-server.sh
+```
+
+输出 `.build/pocahontas-server.zip`，仅含运行代码、锁定依赖和入口；不含测试、`.env` 或数据库初始化脚本。按 [FC Node.js ES modules 说明](https://www.alibabacloud.com/help/en/functioncompute/node-js/)和 [HTTP 事件格式](https://help.aliyun.com/en/functioncompute/http-trigger-invoking-function)部署：
+
+1. 新建 Node.js 20 函数，上传 ZIP，执行入口 `fc.handler`；HTTP 触发器允许 GET、POST、PUT、DELETE，通过 HTTPS 域名对外访问，业务鉴权由 Bearer token 完成。使用 v1 JSON HTTP 事件，来源地址取平台的 `requestContext.http.sourceIp`，不信任调用者提供的转发头。
+2. 配置环境变量 `DATABASE_URL`、`SIGNING_KEY`、`VERIFICATION_KEY`、`MAIL_SENDER`、`MAIL_ACCESS_KEY_ID`、`MAIL_ACCESS_KEY_SECRET`。邮件账号仅授予发送权限，可附加 `MAIL_SECURITY_TOKEN`；地域和 API 地址可由 `MAIL_REGION` / `MAIL_ENDPOINT` 指定。凭据放在部署配置，不放代码包。
+3. FC 与数据库使用同地域 VPC；保留访问 DirectMail HTTPS 的网络通路。初始函数内存 512 MiB、超时 30 秒、单实例并发 4；每实例最多 2 个数据库连接。依据数据库连接预算限制最大实例数，给管理与清理连接留余量，压测后再调整。
+4. 用同一代码包另建定时函数，入口 `fc.cleanup`，每 15 分钟调用一次，无 HTTP 触发器；删除到期验证码、限流记录和超过 24 小时的未注册用户。保留正在有效期内的计数。
+5. 初始化空库后检查健康、真实邮件注册、两台设备同步、改密和重置。默认不记录请求体、授权头、邮件正文或返回密文；不要在平台诊断配置中开启这些内容的采集。
+
+目前未创建云资源。上线仍需确定地域、VPC / PostgreSQL 连接、发信地址、HTTPS 域名和实例预算。
+
+### App 配置
+
+生成 Xcode 工程后，将 `POCAHONTAS_SERVER_URL` 构建设置设为部署的 HTTPS 根地址（无路径前缀），例如通过 `xcodebuild ... POCAHONTAS_SERVER_URL=https://api.example.com build`。默认留空，App 的本地 SSH 和连接库可用，账号按钮会提示尚未配置。测试仅允许 loopback HTTP；正式环境必须 HTTPS，账号请求不跟随重定向。
+
+Mac 测试包同样接收该配置：`POCAHONTAS_SERVER_URL=https://api.example.com scripts/package-macos-test.sh`，需先提交代码，包内会记录源码版本。
+
+三端从 Saved Connections → Account & Sync 注册、登录、同步及修改密码。邮箱重置会再次确认清空云端资料。旧密码状态下的未同步编辑单独保留，可手动复制到本机库，不自动回传。暂不实现后台推送；本机修改、启动和返回前台时触发同步，也可点 Sync Now。
 
 ## 客户端替换与验证
 
-直接删除 CloudSync/CKSyncEngine、Apple 账号绑定、iCloud 设置与签名配置，接入 server。Keychain 只做本机存储，不启用 synchronizable。保留能复用的本机连接库和冲突合并代码；改用整份快照与已有更新时间，不保留 CloudKit 系统字段、云端游标或迁移入口。
+已删除 CloudSync/CKSyncEngine、Apple 账号绑定、iCloud 设置与签名配置，接入 server。Keychain 只做本机存储，不启用 synchronizable。保留本机连接库和冲突合并代码；改用整份快照与已有更新时间，不保留 CloudKit 系统字段、云端游标或迁移入口。
 
-先验证待验证用户不能登录、注册与重置的状态边界、跨实例单码尝试上限、并发单次消费、消费后的中断、旧码在注册/密码变更后失效、签名/受众/到期校验、多端同时登录与本机退出、账号隔离、同毫秒与时钟回拨下的单语句并发写、相同密文重试、密码直接派生密钥、改密码重加密后明文保留、改密与同步并发不覆盖资料、重置以新盐加密空资料、改密码或注销后旧令牌失效、其他设备旧编辑不自动回传且不静默删除；再完成客户端密码互通、双设备离线冲突和 FC 联调。当前只有设计与数据库结构检查，不代表业务 API 或 App 已实现。
+本地验证覆盖注册与重置边界、跨实例限流、并发单次消费、消费后中断、旧码和旧令牌失效、账号隔离、快照并发写与相同密文重试。Swift 与 Node 独立实现的密码派生 / AES-GCM 测试向量一致；两个独立客户端通过真实 Node HTTP 服务和临时 PostgreSQL 验证共享凭据、离线合并、改密 / 重置、旧编辑保留，以及写入成功但响应丢失后的恢复。FC、真实邮件、真机与跨网络验收仍待执行；本地结果不能代替这些验证。

@@ -15,10 +15,10 @@ final class LibraryScreenshotTests: XCTestCase {
     landscape("02-library-empty-landscape", app)
 
     app.buttons["library.sync"].tap()
-    XCTAssertTrue(app.navigationBars["iCloud Sync"].waitForExistence(timeout: 5))
-    capture("03-icloud-settings", app)
-    landscape("04-icloud-settings-landscape", app)
-    app.navigationBars["iCloud Sync"].buttons["Done"].tap()
+    XCTAssertTrue(app.navigationBars["Account & Sync"].waitForExistence(timeout: 5))
+    capture("03-account-settings", app)
+    landscape("04-account-settings-landscape", app)
+    app.navigationBars["Account & Sync"].buttons["Done"].tap()
 
     app.buttons["library.add"].tap()
     XCTAssertTrue(app.textFields["saved.name"].waitForExistence(timeout: 5))

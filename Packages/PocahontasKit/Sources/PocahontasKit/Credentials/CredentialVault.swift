@@ -11,18 +11,18 @@ public struct KeychainCredentialVault: CredentialVault {
   public let accessGroup: String?
   public init(accessGroup: String?) { self.accessGroup = accessGroup }
   private func query(_ reference: CredentialReference) throws -> [String: Any] {
-    if reference.storage == .iCloud, accessGroup == nil { throw LibraryError.cloudNotConfigured }
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "com.rockdai.pocahontas.credentials.v1",
+      kSecAttrService as String: "com.rockdai.pocahontas.credentials.local",
       kSecAttrAccount as String: reference.account,
-      kSecAttrSynchronizable as String: reference.storage == .iCloud,
-      kSecUseDataProtectionKeychain as String: true,
+      kSecAttrSynchronizable as String: false,
     ]
-    // The explicitly local library keeps its original app-scoped items when a
-    // Debug install is upgraded to an iCloud build. Account-scoped items always
-    // use the common group, including this-device-only authentication overrides.
-    if reference.ownerScope != "local", let accessGroup {
+    #if os(macOS)
+      query[kSecUseDataProtectionKeychain as String] = false
+    #else
+      query[kSecUseDataProtectionKeychain as String] = true
+    #endif
+    if let accessGroup {
       query[kSecAttrAccessGroup as String] = accessGroup
     }
     return query
@@ -49,11 +49,13 @@ public struct KeychainCredentialVault: CredentialVault {
   public func insert(_ value: String, reference: CredentialReference) throws {
     var query = try query(reference)
     query[kSecValueData as String] = Data(value.utf8)
-    query[kSecAttrAccessible as String] =
-      reference.storage == .iCloud
-      ? kSecAttrAccessibleWhenUnlocked : kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    #if !os(macOS)
+      query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    #endif
     // Revision addresses are immutable. Never update an existing item in place.
-    try check(SecItemAdd(query as CFDictionary, nil))
+    let status = SecItemAdd(query as CFDictionary, nil)
+    if status == errSecDuplicateItem, try read(reference) == value { return }
+    try check(status)
     guard try read(reference) == value else { throw LibraryError.unavailableKeychain(errSecDecode) }
   }
   public func delete(_ reference: CredentialReference) throws {

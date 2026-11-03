@@ -1,6 +1,6 @@
 # Pocahontas server API v1
 
-状态：设计契约，尚未实现。HTTPS + JSON UTF-8；UUID 小写，二进制使用无填充 Base64URL，用户更新时间使用 UTC ISO 8601 毫秒字符串。原生客户端不需要通配 CORS。除登录/注册/邮箱验证与重置入口外，使用 `Authorization: Bearer <token>`；敏感响应设置 `Cache-Control: no-store`。
+状态：Node.js API 与 Apple 客户端已实现，本地集成测试通过，实际 FC 联调待部署。HTTPS + JSON UTF-8；API UUID 小写，二进制使用无填充 Base64URL，用户更新时间使用 UTC ISO 8601 毫秒字符串。原生客户端不需要通配 CORS。除登录/注册/邮箱验证与重置入口外，使用 `Authorization: Bearer <token>`；敏感响应设置 `Cache-Control: no-store`。
 
 所有表的普通读取与条件写入均过滤 `deleted_at IS NULL`；鉴权校验签名令牌并读取 app_user 的当前状态。Node 在每次写入维护 updated_at，插入时同时填写 created_at。所有 app_user UPDATE 都检查原 updated_at，新值由 Node 取 max(当前服务端毫秒时间, 原值 + 1 毫秒)，详见 [时间规则](README.md#通用字段与密码变更时间)。邮箱重置和账号注销仍按实际清空规则执行，不以软删除标记替代清空密文。
 
@@ -164,6 +164,20 @@ pocahontas/snapshot/v1\n
 注册、修改密码和邮箱重置都使用客户端新生成的随机 salt；改密码和重置不能复用当前盐。账号归属由 server 的登录校验与用户行限定；userId、updatedAt、passwordUpdatedAt 均不参与 AAD，客户端可在注册/重置前准备初始密文。更新时间只用于在线并发检查；加密认证保护内容完整性，不单独证明某份密文是最新内容。plaintext 是 `{schemaVersion:1,records:[...]}`；schemaVersion 是 JSON 格式标识，不是资料修改次数。记录按稳定随机 ID 表示 host、identity、credential，引用用显式 type/id 表示，不采用 Swift 枚举自动编码布局。仅本机秘密不放进快照。未知 schema 保留原始密文并提示升级，不能回写空库。
 
 普通改密码时客户端用新派生的 dataKey 重新加密完整资料；邮箱重置则用新派生的 dataKey 加密空资料。server 用同一条条件 UPDATE 替换 salt、password_hash 和 ciphertext，并更新密码时间与行更新时间。server 只能校验协议形状及新盐与原值不同，不能证明加密内容为空；官方客户端必须按相应流程准备和自检快照，“清空”指旧云端密文已被替换。
+
+### 解密后的 records
+
+JSON 使用 camelCase；ID 与 revision 为随机 UUID，编码小写，读取按 UUID 比较。host 和 identity 的 ID 在同一库内唯一，类型不能变更。revision 只用于客户端确认某次本地编辑，不是数据库版本字段。
+
+| type | 字段 |
+| --- | --- |
+| `host` | `id`、`revision`、`name`、`tags:[]`、`binding:{host,port,username,authentication}`。 |
+| `identity` | `id`、`revision`、`name`、`tags:[]`、`identity:{publicKey,fingerprint,secret,requiresPassphrase}`。 |
+| `credential` | `id` 等于凭据引用的 revision；`credential:{reference,value}`，value 为密码或 OpenSSH 私钥字符串。 |
+
+authentication 为 `{type:"password",reference?:{...}}` 或 `{type:"identity",id:"身份 UUID"}`；缺少密码引用表示连接时询问。凭据引用为 `{ownerScope:"账号 UUID",id:"逻辑 UUID",revision:"不可变内容 UUID",kind:"password"或"privateKey",storage:"device"或"account"}`。identity.secret 使用同一引用结构。`device` 引用只传递元数据，不产生 credential 项；`account` 引用必须在本快照中找到完全一致的 credential 项，值不可为空且最多 64 KiB。共享项只在整份 AES-GCM 密文内传输，不能作为明文 API 参数。
+
+删除主机或身份时仅保留 `{type,id,deleted:true}`，不上传旧名称、端点或公钥；凭据修订暂时保留，以支持离线设备的旧引用。未知 schema 或记录 type 不能用空库替代。Apple 的编码/校验入口是 `VaultSnapshot`，各端按此格式互通，不依赖 Swift 自动枚举编码。
 
 ## 输入和错误
 

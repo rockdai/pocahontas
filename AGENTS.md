@@ -21,9 +21,9 @@
 - 终端基于 `ghostty-org/ghostty` 与 `madeye/ghostty` 的 passthru IO 集成；沿用当前锁定的 submodule 和薄 Swift adapter，不自行重写 renderer。
 - SSH 由客户端直连用户机器，server 不代理终端流量。保持原始字节顺序、背压和会话回调隔离；首次主机指纹需确认，指纹变化阻断连接，重连不自动重放输入命令。
 - 后台的目录与服务名统一为 `server`，不命名为 `backend`。技术栈为 Node.js、阿里云函数计算、PostgreSQL；优先原生能力和 JavaScript ES modules，数据库驱动使用 `pg`，非必要不引入其他依赖。
-- 使用统一账号与密文存储方案，不另建同步服务。iCloud 方案已经取消，旧 CloudKit / iCloud Keychain 代码是待替换实现，不能作为继续扩展的方向。
+- 使用统一账号与密文存储方案，不另建同步服务。iCloud 方案已经取消，CloudKit / iCloud Keychain 代码已删除，不能重新引入。
 - 产品尚未发布，不为旧版本增加兼容层或数据迁移流程。一个密码完成登录与本机解密，不向用户引入恢复密钥；邮箱重置密码须明确确认清空旧云端加密资料，知道旧密码时修改密码保留资料。
-- 当前 `server/` 只有设计与 DDL，业务 API、客户端加密与新同步链路尚未接通。区分设计、实现和验证状态；实现推进后同步更新状态说明，历史测试结果不能代替新功能验收。
+- `server/` 已实现账号 API、验证码邮件适配和密文存储；Apple 客户端已接入密码派生、端到端加密与同步。区分本地验证与云端部署：FC、真实邮件和生产数据库尚待配置与联调，不能将本地测试描述为已上线。
 
 ## 项目入口
 
@@ -34,7 +34,7 @@
 | `Terminal/` | Ghostty C ABI 包装、平台渲染宿主与输入适配。 |
 | `vendor/ghostty/` | 固定版本的引擎 submodule。 |
 | `project.yml`、`scripts/` | XcodeGen 配置和构建、测试、截图入口。 |
-| `server/` | server 设计、DDL 与协议；后续实现也放在此目录。 |
+| `server/` | server 实现、测试、DDL 与协议。 |
 | `Tests/`、`docs/screenshots/` | App 单元 / UI 测试与界面截图。 |
 
 构建前阅读 [README.md](README.md)；架构见 [docs/architecture.md](docs/architecture.md)，账号与数据库约定见 [server/README.md](server/README.md)、[server/schema.sql](server/schema.sql)、[server/protocol.md](server/protocol.md) 和 [server/passwords.md](server/passwords.md)。带有“历史记录”或“已废弃”标记的内容不作为新设计依据。
@@ -94,6 +94,7 @@
 - 代码改动后运行与影响范围匹配的本地测试；行为变化和缺陷修复补充必要的正常路径及边界回归测试，测试行为而非实现细节。纯文档、命名或低影响改动不机械新增测试。
 - 先检查现有工具、依赖和脚本，不直接以“没有环境”为由跳过；确实无法验证时，明确报告尝试、阻塞和未验证范围，不把编译通过等同于运行通过。
 - 共享 Swift 逻辑：`swift test --package-path Packages/PocahontasKit -j 4`。真实 SSH 验证使用 `scripts/test-ssh.sh`；普通 `swift test` 会跳过需要 fixture 的网络集成测试。
+- 账号链路：`npm ci --prefix server`、`npm test --prefix server`、`scripts/test-account.sh`。测试自动创建临时 PostgreSQL，仅监听 Unix socket；需要 `initdb` / `pg_ctl`，可用 `PG_BIN` 指定其目录。账号 UI 与冷启动 Keychain 恢复：`scripts/capture-account-screenshots.sh`。测试邮件只保留在 loopback fixture 内，禁止把测试取码接口打入部署包。
 - SSH fixture 的 Python 环境按 README 创建；测试仅使用 loopback 和公开测试身份，不连接用户真实机器或删除已有主机信任记录。
 - Mac 原生与 UI 测试使用 `scripts/test-macos.sh`；多会话回归使用 `scripts/test-session-macos.sh`。iOS 单元 / UI 测试按 README 启动 fixture 后使用 `pocahontas` scheme。
 - Ghostty 集成变动运行 `scripts/verify-ghostty.sh` 并验证受影响平台的渲染与输入。Keychain 集成测试需要有效签名，不能用 `CODE_SIGNING_ALLOWED=NO` 绕过运行要求。

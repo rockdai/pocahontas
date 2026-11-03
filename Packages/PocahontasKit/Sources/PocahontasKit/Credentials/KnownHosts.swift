@@ -19,9 +19,7 @@ public struct KeychainKnownHosts: KnownHostsStore {
       kSecAttrSynchronizable as String: false,
     ]
     #if os(macOS)
-      // Trust pins are deliberately local. The login Keychain supports native Mac
-      // builds without an iCloud/provisioning profile; credentials will use the
-      // separately provisioned Data Protection Keychain when sync is implemented.
+      // The login Keychain supports local Mac builds without a provisioning profile.
       attributes[kSecUseDataProtectionKeychain as String] = false
     #else
       attributes[kSecUseDataProtectionKeychain as String] = true

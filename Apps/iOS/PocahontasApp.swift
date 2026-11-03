@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 @main
 struct PocahontasApp: App {
-  @UIApplicationDelegateAdaptor(CloudApplicationDelegate.self) private var delegate
   @Environment(\.scenePhase) private var scenePhase
   var body: some Scene {
     WindowGroup {
@@ -21,27 +20,6 @@ struct PocahontasApp: App {
             }
           }
         }
-    }
-  }
-}
-
-final class CloudApplicationDelegate: NSObject, UIApplicationDelegate {
-  func application(
-    _ application: UIApplication,
-    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-  ) -> Bool {
-    if LibraryServices.shared.library?.cloudConfigured == true {
-      application.registerForRemoteNotifications()
-    }
-    return true
-  }
-  func application(
-    _ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
-  ) {
-    Task {
-      await LibraryServices.shared.library?.syncNow()
-      completionHandler(.newData)
     }
   }
 }
@@ -138,7 +116,7 @@ struct ConnectionView: View {
           Text("Authentication")
         } footer: {
           Text(
-            "Quick Connect keeps credentials in memory until the tab closes, including for reconnecting. Use Saved Connections to save a server or manage iCloud sync."
+            "Quick Connect keeps credentials in memory until the tab closes, including for reconnecting. Use Saved Connections to save a server or manage account sync."
           )
         }.textInputAutocapitalization(.never).autocorrectionDisabled()
         Section {

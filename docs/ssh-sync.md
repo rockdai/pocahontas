@@ -25,4 +25,4 @@ Apple Keychain 仅用于本机安全存储，不启用 `kSecAttrSynchronizable`�
 
 ## 实现状态
 
-当前 App 代码仍包含 `CloudSync.swift`、CloudKit 账号逻辑、iCloud 设置与 entitlement，属于待删除实现，不再是产品方案。后台设计已明确替换清单；业务 API、客户端端到端加密与多端联调尚未实现。已有的本地存储、冲突合并、主机校验与 SSH 能力可以保留，不需要将旧 CloudKit 数据转入新库。
+`AccountSync.swift` 已替换 CloudKit 同步，三端使用同一账号界面和密码加密链路。CloudKit 账号逻辑、iCloud 设置与 entitlement 已删除。保留本地存储、冲突合并、主机校验与 SSH 能力，使用新本地库，不迁移旧数据。两个独立 Swift 客户端与真实 Node / 临时 PostgreSQL 的本地联调已通过；实际 FC、邮件和跨网络设备联调仍待部署。配置、运行和验证入口见 [server README](../server/README.md#运行方式)。

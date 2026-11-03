@@ -1,4 +1,3 @@
-import CloudKit
 import Foundation
 import Testing
 
@@ -13,7 +12,7 @@ private func host(_ name: String = "Agent box") throws -> LibraryRecord {
 }
 private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
   var row = try StoredRecord(value)
-  try row.acknowledge(value.encoded(), systemFields: Data())
+  try row.acknowledge(value.encoded())
   return row
 }
 
@@ -29,7 +28,7 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
     var remote = base
     remote.tags = ["remote edit"]
     remote.revision = UUID()
-    try row.receive(remote.encoded(), systemFields: Data([1]))
+    try row.receive(remote.encoded())
     #expect(row.record?.name == "Mac edit")
     #expect(row.record?.tags == ["remote edit"])
     #expect(row.conflict == nil)
@@ -47,11 +46,11 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
     remote.binding?.authentication = .identity(UUID())
     remote.tags = ["keep me"]
     remote.revision = UUID()
-    try row.receive(remote.encoded(), systemFields: Data())
+    try row.receive(remote.encoded())
     #expect(row.conflict?.fields == ["connection"])
     #expect(row.record?.binding == local.binding)
     // Repeated delivery doesn't clear an unresolved conflict.
-    try row.receive(remote.encoded(), systemFields: Data())
+    try row.receive(remote.encoded())
     #expect(row.conflict?.fields == ["connection"])
     try row.resolve(useRemote: true)
     #expect(row.record?.binding == remote.binding)
@@ -69,13 +68,13 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
     var localEdit = try baseline(base)
     localEdit.payload = try edited.encoded()
     localEdit.dirty = true
-    try localEdit.receive(deleted.encoded(), systemFields: Data())
+    try localEdit.receive(deleted.encoded())
     #expect(localEdit.record?.deleted == true)
     #expect(!localEdit.dirty)
     var localDelete = try baseline(base)
     localDelete.payload = try deleted.encoded()
     localDelete.dirty = true
-    try localDelete.receive(edited.encoded(), systemFields: Data())
+    try localDelete.receive(edited.encoded())
     #expect(localDelete.record?.deleted == true)
     #expect(localDelete.dirty)
   }
@@ -86,11 +85,11 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
     newer.name = "Edited during upload"
     newer.revision = UUID()
     row.payload = try newer.encoded()
-    try row.acknowledge(first.encoded(), systemFields: Data([1]))
+    try row.acknowledge(first.encoded())
     #expect(row.dirty)
     #expect(row.record == newer)
     #expect(try LibraryRecord.decode(row.base!) == first)
-    try row.acknowledge(newer.encoded(), systemFields: Data([2]))
+    try row.acknowledge(newer.encoded())
     #expect(!row.dirty)
   }
   @Test func futureSchemaIsKeptOpaqueAndCannotBeUploaded() throws {
@@ -99,28 +98,25 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
     var future = first
     future.schemaVersion = 99
     let bytes = try future.encoded()
-    try row.receive(bytes, systemFields: Data([9]))
+    try row.receive(bytes)
     #expect(row.isReadOnly)
     #expect(row.payload == bytes)
     #expect(!row.dirty)
     #expect(row.conflict?.remote == first)
     #expect(throws: LibraryError.self) { try row.resolve(useRemote: false) }
-    #expect(throws: LibraryError.self) {
-      try CloudRecordCodec.record(row, zone: CKRecordZone.ID(zoneName: "test"))
-    }
   }
-  @Test func cloudPayloadUsesOnlyEncryptedFieldsAndStableRandomID() throws {
-    let value = try host()
-    let zone = CKRecordZone.ID(zoneName: "test")
-    let record = try CloudRecordCodec.record(StoredRecord(value), zone: zone)
-    // allKeys includes encrypted keys too; only the encrypted payload is allowed.
-    #expect(record.allKeys() == ["payload"])
-    #expect(record.recordID.recordName == value.id.uuidString)
-    #expect(record.encryptedValues["payload"] as? Data == (try value.encoded()))
-    let fields = CloudRecordCodec.systemFields(record)
-    var row = try StoredRecord(value)
-    row.systemFields = fields
-    #expect(try CloudRecordCodec.record(row, zone: zone).recordID == record.recordID)
+  @Test func snapshotHasExplicitTypesAndMinimalTombstones() throws {
+    var value = try host()
+    let data = try VaultSnapshot(records: [value]).encoded()
+    let decoded = try VaultSnapshot.decode(data, scope: "local")
+    #expect(decoded.records.first == value)
+    #expect(decoded.credentials.isEmpty)
+    #expect(String(decoding: data, as: UTF8.self).contains("\"type\":\"password\""))
+    value.deleted = true
+    let deleted = try VaultSnapshot(records: [value]).encoded()
+    let json = try #require(JSONSerialization.jsonObject(with: deleted) as? [String: Any])
+    let entries = try #require(json["records"] as? [[String: Any]])
+    #expect(Set(entries[0].keys) == Set(["id", "type", "deleted"]))
   }
   @Test @MainActor func transactionSurvivesReopenAndScopesStaySeparate() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -131,15 +127,14 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
       let store = try LibraryStore(url: url)
       var state = LibraryState()
       state.records[value.id] = try StoredRecord(value)
-      state.engineState = Data([1, 2, 3])
-      state.zoneKnown = true
+      state.remoteUpdatedAt = "2026-11-04T00:00:00.000Z"
       try store.write(state, scope: "account-A")
     }
     let reopened = try LibraryStore(url: url)
     let saved = try reopened.read(scope: "account-A")
     #expect(saved.records[value.id]?.record == value)
     #expect(saved.records[value.id]?.dirty == true)
-    #expect(saved.engineState == Data([1, 2, 3]))
+    #expect(saved.remoteUpdatedAt == "2026-11-04T00:00:00.000Z")
     #expect(try reopened.read(scope: "account-B").records.isEmpty)
     #expect(try reopened.read(scope: "local").records.isEmpty)
   }
@@ -156,7 +151,7 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
   @Test @MainActor func missingCredentialDoesNotFallbackOrRemoveBinding() async throws {
     let library = try makeLibrary(TestVault())
     var value = try host()
-    let ref = CredentialReference(ownerScope: "local", kind: .password, storage: .iCloud)
+    let ref = CredentialReference(ownerScope: "local", kind: .password, storage: .account)
     value.binding?.authentication = .password(ref)
     try library.save(value)
     await #expect(throws: LibraryError.self) { try await library.authentication(for: value.id) }
@@ -222,7 +217,7 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
     value.binding?.authentication = .password(reference)
     try library.save(value)
     let generation = library.accountGeneration
-    _ = try library.invalidateAccount()
+    try library.signOut()
     #expect(library.accountGeneration > generation)
     #expect(library.accountScope == nil)
     #expect(library.scope == "local")
@@ -247,8 +242,7 @@ private func baseline(_ value: LibraryRecord) throws -> StoredRecord {
   }
   @MainActor private func makeLibrary(_ vault: TestVault) throws -> ConnectionLibrary {
     try ConnectionLibrary(
-      store: LibraryStore(inMemory: true), vault: vault, cloudConfigured: false,
-      defaults: UserDefaults(suiteName: "library-tests-\(UUID())")!)
+      store: LibraryStore(inMemory: true), vault: vault)
   }
 }
 

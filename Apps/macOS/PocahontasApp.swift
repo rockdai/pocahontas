@@ -51,9 +51,6 @@ private struct SessionCommands: Commands {
 final class MacApplicationDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.appearance = NSAppearance(named: .aqua)
-    if LibraryServices.shared.library?.cloudConfigured == true {
-      NSApp.registerForRemoteNotifications()
-    }
     Task { await LibraryServices.shared.start() }
   }
   func applicationDidBecomeActive(_ notification: Notification) {
@@ -66,11 +63,6 @@ final class MacApplicationDelegate: NSObject, NSApplicationDelegate {
   func applicationDidResignActive(_ notification: Notification) {
     // Losing focus is not iOS background suspension; SSH continues in every window.
     GhosttyEngine.shared.setBackgrounded(true)
-  }
-  func application(
-    _ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]
-  ) {
-    Task { await LibraryServices.shared.library?.syncNow() }
   }
 }
 
@@ -173,7 +165,7 @@ private struct MacConnectionForm: View {
           }
         }.formStyle(.grouped).scrollDisabled(true).fixedSize(horizontal: false, vertical: true)
         Text(
-          "Quick Connect keeps credentials in memory until the tab closes, including for reconnecting. Use Saved Connections to save a server or manage iCloud sync."
+          "Quick Connect keeps credentials in memory until the tab closes, including for reconnecting. Use Saved Connections to save a server or manage account sync."
         )
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         HStack {

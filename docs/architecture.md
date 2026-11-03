@@ -4,7 +4,7 @@
 
 pocahontas 是面向 coding agent 的原生终端客户端。首版同时让用户在 iPhone、iPad 与原生 macOS 上连接自己的开发机器，使用完整 TUI，离开 App 后让任务继续在远端运行，回来时接回原会话。三端共享连接库与核心逻辑；Mac 使用 SwiftUI + AppKit 原生界面，不通过 Mac Catalyst 或 iPad 兼容模式交付。
 
-建议采用 **Ghostty 完整渲染层 + madeye passthru IO + SSH + 远端 tmux**。SSH 配置和凭据属于同一个连接库，由客户端加密后交给 Pocahontas 统一后台。后台使用 **Node.js + 阿里云函数计算 + PostgreSQL**，涵盖账号、签名令牌登录、密文存储及同步；不另建同步服务，首期不做设备管理。iCloud 路线取消，无旧版兼容或迁移。详见[后台设计](../server/README.md)与[连接库规则](ssh-sync.md)。Android、原生鸿蒙客户端在后续规划中，协议从第一版覆盖多端。当前 App 中旧 iCloud 代码仍待替换，设计不代表后台已经实现。
+建议采用 **Ghostty 完整渲染层 + madeye passthru IO + SSH + 远端 tmux**。SSH 配置和凭据属于同一个连接库，由客户端加密后交给 Pocahontas 统一后台。后台使用 **Node.js + 阿里云函数计算 + PostgreSQL**，涵盖账号、签名令牌登录、密文存储及同步；不另建同步服务，首期不做设备管理。iCloud 路线取消，无旧版兼容或迁移。详见[server 实现与部署](../server/README.md)与[连接库规则](ssh-sync.md)。Android、原生鸿蒙客户端在后续规划中，协议从第一版覆盖多端。旧 iCloud 代码已删除，新 server 与 Apple 客户端已通过本地端到端联调；云端部署尚待配置。
 
 ## 首版体验
 

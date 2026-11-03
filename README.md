@@ -18,7 +18,7 @@ App 与终端统一使用固定浅色外观，不跟随系统深色模式，也�
 
 已加入三端共用的本地连接库与 SSH 身份管理。快速连接仅在当前 tab 存续期间将凭据保留在内存中，以便重连，不写入持久存储；已保存连接可在离线时使用。本地逻辑包括持久 outbox、冲突审阅、删除标记和账号隔离。
 
-**2026-11-03 架构调整：停止采用 iCloud，统一使用 Pocahontas 后台（Node.js + 阿里云函数计算 + PostgreSQL）管理账号与密文库。** 不做旧版本兼容或数据迁移。目前已确定[server 设计、API 与数据库契约](server/README.md)：三张基础表、签名登录令牌、整份密文快照，不使用显式多语句事务和外键；App 中旧 CloudKit/iCloud Keychain 实现尚待替换，新后台与端到端加密尚未接通。
+**2026-11-04：已实现 Pocahontas server 与三端账号加密同步，移除 iCloud。** Node.js + 阿里云函数计算 + PostgreSQL，只有三张基础表，不使用显式多语句事务和外键。注册验证邮箱；同一个密码完成登录与本机解密，改密码保留资料，邮箱重置需确认清空云端资料。已通过本地双客户端与真实 PostgreSQL 联调；云端服务、真实邮件和真机跨网络验证待部署。[运行、部署与 App 配置](server/README.md#运行方式)。不做旧版本兼容或数据迁移。
 
 iPhone、iPad 和 Mac 都支持多个并行 SSH 会话：点击顶部 **＋** 新建，点击标签切换，点击标签的 **×** 单独关闭。同一台主机也可打开多个独立会话；切换标签或填写新连接时，其他连接继续接收输出。每个会话保留独立的终端内容、认证状态和输入。
 
@@ -46,7 +46,16 @@ open pocahontas.xcodeproj
 
 ## 验证
 
-本地功能仍可按下方入口验证。旧 iCloud scheme 不再作为开发路线；新后台验收计划见[统一后台设计](server/README.md#客户端替换与验证)。当前普通 Mac Debug 的持久凭据限制仍存在，需在替换本机安全存储适配时单独验证，不能将后台设计视为已修复。
+账号服务和客户端验证入口如下，需要 Node.js 20+ 与 PostgreSQL 的 `initdb` / `pg_ctl`。测试自动建立并销毁临时数据库，邮件留在测试内存中，不访问真实账号。
+
+```sh
+npm ci --prefix server
+npm test --prefix server
+scripts/test-account.sh
+scripts/capture-account-screenshots.sh
+```
+
+账号截图与平台验收情况见 [Account & Sync](docs/screenshots/account/README.md)。未设置 `POCAHONTAS_SERVER_URL` 时保留本地模式；配置方法见 [server](server/README.md#app-配置)。Mac 普通 Debug 使用本机 login Keychain 保存凭据和登录材料，不需要 iCloud entitlement。
 
 共享逻辑测试：
 
