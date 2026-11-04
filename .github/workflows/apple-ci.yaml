@@ -30,3 +30,6 @@ jobs:
 
       - name: Run unit tests
         run: swift test --package-path Packages/PocahontasKit -j 4 --skip IntegrationTests
+
+      - name: Test macOS packaging logic
+        run: python3 -m unittest discover -s scripts -p 'test_package_macos.py'

@@ -97,6 +97,7 @@ targets:
         CFBundleDisplayName: Pocahontas
         PocahontasServerURL: "$(POCAHONTAS_SERVER_URL)"
         NSPrincipalClass: NSApplication
+        LSApplicationCategoryType: public.app-category.developer-tools
         NSRequiresAquaSystemAppearance: true
         NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
   PocahontasMacTests:
