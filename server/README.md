@@ -151,7 +151,21 @@ scripts/package-server.sh
 
 当前 `fc.handler` / `fc.cleanup` 入口不需要 `HOST` 或 `PORT`；FC 连接远程数据库时不配置 `DATABASE_TLS=false`。旧的两个服务端密钥配置已由 `SECRET_KEY` 替代；更换该值会使旧登录令牌和未使用验证码失效，并重置限流标识。它不参与客户端 SSH 资料的加解密。
 
-目前未创建云资源。上线仍需确定地域、VPC / PostgreSQL 连接、发信地址、HTTPS 域名和实例预算。
+### GitHub Actions 自动部署
+
+[fc-deploy.yaml](../.github/workflows/fc-deploy.yaml) 在 `rockdai/pocahontas` 的 `main` 更新后运行，先执行 server 测试，再使用现有脚本打包并更新已创建的 `pocahontas-server`。部署串行执行，测试或打包失败时不会上传代码。
+
+在仓库 **Settings → Secrets and variables → Actions** 配置：
+
+| 类型 | 名称 | 内容 |
+| --- | --- | --- |
+| Secret | `ACCESS_KEY_ID` | 部署用 RAM AccessKey ID。 |
+| Secret | `ACCESS_KEY_SECRET` | 对应的 AccessKey Secret。 |
+| Variable | `FC_REGION` | 函数实际所在地域，例如 `cn-hangzhou`。 |
+
+部署凭据需要 `fc:UpdateFunction` 权限；只具备邮件发送权限的 AccessKey 无法部署。GitHub Secrets 与 FC 环境变量分别配置，不会自动共享；无需把数据库密码、`SECRET_KEY` 或邮件配置复制到 GitHub。
+
+工作流通过阿里云 CLI 调用 [UpdateFunction](https://help.aliyun.com/en/functioncompute/fc/developer-reference/api-fc-2023-03-30-updatefunction)，请求体仅含 `code.zipFile`，不提交环境变量、运行时、入口、网络、内存、超时或触发器配置，也不创建函数、发布版本或调整别名。部署更新 `$LATEST` 的代码，线上触发器需使用该版本。日志只输出函数名、代码校验值和更新状态，不输出 API 返回的完整函数配置。
 
 ### App 配置
 
