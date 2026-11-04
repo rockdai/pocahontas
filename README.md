@@ -6,6 +6,8 @@
 
 Terminal made for coding agents，首版同时支持 iPhone、iPad 和原生 macOS。
 
+This repository doesn't take pull requests.
+
 [下载 Mac 测试包（Apple Silicon）](https://github.com/rockdai/pocahontas/raw/refs/heads/main/downloads/Pocahontas-AppleSilicon.zip) · [安装说明与 SHA-256 校验](downloads/README.md)。包内应用名为 **Pocahontas.app**，无需 Xcode；这是尚未公证的本地功能测试版。
 
 通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，目标是通过 Pocahontas 账号跨 Apple、Android 与鸿蒙设备共享；Android 与鸿蒙客户端尚在规划中。
