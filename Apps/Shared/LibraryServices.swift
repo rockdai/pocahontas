@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import PocahontasKit
-import Security
 
 @MainActor @Observable final class LibraryServices {
   static let shared = LibraryServices()
@@ -10,33 +9,13 @@ import Security
   private var started = false
   private init() {
     do {
-      let requested =
-        Bundle.main.object(forInfoDictionaryKey: "PocahontasCloudEnabled") as? String == "YES"
-      let group = Bundle.main.object(forInfoDictionaryKey: "PocahontasKeychainGroup") as? String
-      var configured = requested && group?.contains("$(") == false
-      #if targetEnvironment(simulator)
-        configured = false
-      #elseif os(macOS)
-        if let task = SecTaskCreateFromSelf(nil) {
-          let containers =
-            SecTaskCopyValueForEntitlement(
-              task, "com.apple.developer.icloud-container-identifiers" as CFString, nil)
-            as? [String]
-          configured = configured && containers?.contains(ConnectionLibrary.containerID) == true
-        } else {
-          configured = false
-        }
-      #endif
-      #if os(macOS)
-        let credentialsAvailable = configured
-      #else
-        let credentialsAvailable = true
-      #endif
+      let configuredURL = Bundle.main.object(forInfoDictionaryKey: "PocahontasServerURL") as? String ?? ""
+      let url = configuredURL.isEmpty || configuredURL.contains("$(") ? nil : URL(string: configuredURL)
+      let api = try url.map { try AccountAPI(baseURL: $0) }
       library = try ConnectionLibrary(
         store: LibraryStore(),
-        vault: KeychainCredentialVault(accessGroup: configured ? group : nil),
-        cloudConfigured: configured,
-        credentialStorageAvailable: credentialsAvailable)
+        vault: KeychainCredentialVault(accessGroup: nil), api: api,
+        sessionStore: url.map { KeychainAccountSessionStore(server: $0) })
       startupError = nil
     } catch {
       library = nil

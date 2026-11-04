@@ -22,10 +22,10 @@ struct ConnectionLibraryView: View {
             settings = true
           } label: {
             HStack(spacing: 12) {
-              Image(systemName: library.syncEnabled ? "icloud" : "internaldrive")
+              Image(systemName: library.syncEnabled ? "person.crop.circle" : "internaldrive")
                 .font(.title2).foregroundStyle(AppAppearance.accent)
               VStack(alignment: .leading, spacing: 4) {
-                Text(library.scope == "local" ? "On this device" : "iCloud connections").font(
+                Text(library.scope == "local" ? "On this device" : "Account connections").font(
                   .headline)
                 Text(library.syncStatus).font(.caption).foregroundStyle(.secondary)
               }
@@ -39,7 +39,7 @@ struct ConnectionLibraryView: View {
             ContentUnavailableView(
               "Your connections, together", systemImage: "terminal",
               description: Text(
-                "Save a development machine here, then pick it up on your other Apple devices with iCloud."
+                "Save a development machine here, then pick it up on your other devices with your Pocahontas account."
               )
             )
             .padding(.vertical, 12)
@@ -116,7 +116,7 @@ struct ConnectionLibraryView: View {
         }
       }
       .sheet(item: $reviewing) { ConflictReview(library: library, id: $0.id) }
-      .sheet(isPresented: $settings) { CloudSettingsView(library: library) }
+      .sheet(isPresented: $settings) { AccountSettingsView(library: library) }
       .sheet(isPresented: $identities) { IdentityLibraryView(library: library) }
       .confirmationDialog(
         "Delete this connection?",
@@ -186,15 +186,14 @@ private struct HostEditor: View {
           }.accessibilityIdentifier("saved.authentication")
           if identityID == nil {
             Toggle("Save a password in Keychain", isOn: $savePassword)
-              .disabled(!library.credentialStorageAvailable).accessibilityIdentifier(
-                "saved.remember")
+              .accessibilityIdentifier("saved.remember")
             if savePassword {
               SecureField(
                 existing == nil ? "Password" : "New password (leave empty to keep)", text: $password
               )
               .accessibilityIdentifier("saved.password")
-              Toggle("Sync this password with iCloud Keychain", isOn: $sharePassword)
-                .disabled(library.scope == "local" || !library.cloudConfigured || useLocalOverride)
+              Toggle("Sync this password with my account", isOn: $sharePassword)
+                .disabled(library.scope == "local" || !library.serverConfigured || useLocalOverride)
             }
           }
           if existing != nil, library.scope != "local" {
@@ -204,11 +203,11 @@ private struct HostEditor: View {
           Text("Authentication")
         } footer: {
           Text(
-            "Passwords and private keys never enter the connection database. Credentials stay on this device unless you explicitly choose iCloud Keychain. Passphrases are asked for each connection."
+            "Credentials stay in this device’s Keychain. Shared credentials are encrypted on this device before upload. Passphrases are asked for each connection."
           )
           if existing != nil {
             Text(
-              "Changing credential storage creates a new revision. Previously shared revisions remain in iCloud Keychain."
+              "Changing credential storage creates a new revision. Previously shared revisions remain in your encrypted library."
             )
           }
         }
@@ -236,7 +235,7 @@ private struct HostEditor: View {
       case .identity(let id): identityID = id
       case .password(let reference):
         savePassword = reference != nil
-        sharePassword = reference?.storage == .iCloud
+        sharePassword = reference?.storage == .account
       }
     }
   }
@@ -249,12 +248,12 @@ private struct HostEditor: View {
         if !password.isEmpty {
           auth = .password(
             try library.savePassword(
-              password, storage: sharePassword && !useLocalOverride ? .iCloud : .device))
+              password, storage: sharePassword && !useLocalOverride ? .account : .device))
         } else if let existing,
           case .password(let ref) = library.state.localOverrides[existing.id]
             ?? existing.binding?.authentication
         {
-          if let ref, ref.storage != (sharePassword && !useLocalOverride ? .iCloud : .device) {
+          if let ref, ref.storage != (sharePassword && !useLocalOverride ? .account : .device) {
             error =
               "Enter the password again to create a new Keychain revision with this storage choice. Older revisions remain in Keychain."
             return
@@ -391,7 +390,7 @@ private struct IdentityLibraryView: View {
         }
         Section {
           Text(
-            "Import defaults to this device. iCloud Keychain sharing is a separate choice for each key. Encrypted keys require their passphrase each time you connect."
+            "Import defaults to this device. Account sharing is a separate choice for each key. Encrypted keys require their passphrase each time you connect."
           )
           .font(.caption).foregroundStyle(.secondary)
         }
@@ -456,15 +455,12 @@ private struct IdentityEditor: View {
           SecureField("Passphrase (if encrypted)", text: $passphrase)
         }
         Section {
-          Toggle("Sync this key with iCloud Keychain", isOn: $sharing)
-            .disabled(library.scope == "local" || !library.cloudConfigured)
+          Toggle("Sync this key with my account", isOn: $sharing)
+            .disabled(library.scope == "local" || !library.serverConfigured)
         } footer: {
           Text(
-            "The private key goes into Keychain. Only its name, public key and fingerprint go into the connection library. The passphrase is used to validate the key and is not saved. Replacing a key creates a new revision; older Keychain revisions are retained."
+            "The private key stays in Keychain. When sharing is enabled, it is also included in the encrypted account library. The passphrase is used to validate the key and is not saved. Replacing a key creates a new revision."
           )
-        }
-        if !library.credentialStorageAvailable {
-          Text(LibraryError.cloudNotConfigured.localizedDescription).font(.caption)
         }
         if let error { Text(error).foregroundStyle(AppAppearance.warning) }
       }.formStyle(.grouped).libraryTextInput()
@@ -480,14 +476,14 @@ private struct IdentityEditor: View {
                 do {
                   try await library.importIdentity(
                     name: name, privateKey: key, passphrase: passphrase,
-                    storage: sharing ? .iCloud : .device, replacing: existing?.id)
+                    storage: sharing ? .account : .device, replacing: existing?.id)
                   key = ""
                   passphrase = ""
                   dismiss()
                 } catch { self.error = error.localizedDescription }
                 busy = false
               }
-            }.disabled(busy || key.isEmpty || name.isEmpty || !library.credentialStorageAvailable)
+            }.disabled(busy || key.isEmpty || name.isEmpty)
           }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .text]) { result in
@@ -502,95 +498,6 @@ private struct IdentityEditor: View {
           } catch { self.error = "Choose an OpenSSH Ed25519 key smaller than 64 KB." }
         }
     }.librarySheetSize().interactiveDismissDisabled(busy).onAppear { name = existing?.name ?? "" }
-  }
-}
-
-private struct CloudSettingsView: View {
-  @Bindable var library: ConnectionLibrary
-  @Environment(\.dismiss) private var dismiss
-  @State private var recover = false
-  @State private var copyLocal = false
-  var body: some View {
-    NavigationStack {
-      Form {
-        Section {
-          Label("Your Apple devices, one connection library", systemImage: "icloud").font(.headline)
-          Text(library.syncStatus).accessibilityIdentifier("sync.status")
-          if let lastSync = library.lastSync {
-            LabeledContent("Last sync") { Text(lastSync, style: .relative) }
-          }
-          if library.scope != "local" {
-            LabeledContent("Waiting to upload", value: String(library.pendingCount))
-            LabeledContent("Conflicts", value: String(library.conflictCount))
-          }
-        }
-        Section("Connection sync") {
-          if !library.cloudConfigured {
-            Text(LibraryError.cloudNotConfigured.localizedDescription).font(.callout)
-              .foregroundStyle(.secondary)
-          } else if library.syncEnabled {
-            Button("Sync Now", systemImage: "arrow.triangle.2.circlepath") {
-              Task { await library.syncNow() }
-            }
-            .disabled(library.isSyncing)
-            Button("Pause Connection Sync") { Task { await library.disableSync() } }
-          } else {
-            Button("Use iCloud Connections", systemImage: "icloud") {
-              run { try await library.enableSync() }
-            }
-          }
-          if library.scope != "local" {
-            Button("Copy Local Connections to iCloud") { copyLocal = true }
-            Button("Switch to Local Library") { run { try await library.selectLocalLibrary() } }
-          }
-          Button("Check iCloud Account") { Task { await library.checkAccount() } }.disabled(
-            !library.cloudConfigured)
-        }
-        Section("Credentials") {
-          Text(
-            "Connection sync and iCloud Keychain are separate. Pausing connection sync does not stop iCloud Keychain from sharing credentials you already chose to sync."
-          )
-          Text(
-            "New passwords and SSH keys default to this device. Missing credentials on another device are shown explicitly. Server trust is always confirmed separately on each device."
-          )
-        }.font(.callout).foregroundStyle(.secondary)
-        if let reason = library.state.recoveryReason {
-          Section("Recovery") {
-            Text(reason)
-            Button("Reload iCloud Library", role: .destructive) { recover = true }
-          }
-        }
-        Section {
-          Text(
-            "Local changes work offline. Concurrent edits are reviewed before a new connection can use them. Metadata uses encrypted CloudKit fields; iCloud Keychain protects your shared secrets. Use the same Apple Account on each device."
-          )
-          .font(.caption).foregroundStyle(.secondary)
-        }
-      }.formStyle(.grouped)
-        .navigationTitle("iCloud Sync")
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-        .confirmationDialog(
-          "Copy local connections?", isPresented: $copyLocal, titleVisibility: .visible
-        ) {
-          Button("Copy to iCloud") { run { try library.copyLocalConnectionsToCloud() } }
-        } message: {
-          Text(
-            "Creates new copies in this Apple Account. Passwords and keys remain on this device unless you separately choose to share them. Copying again creates another set."
-          )
-        }
-        .confirmationDialog("Reload from iCloud?", isPresented: $recover, titleVisibility: .visible)
-      {
-        Button("Reload", role: .destructive) { run { try await library.reloadFromCloud() } }
-      } message: {
-        Text(
-          "The current local snapshot will be archived for recovery. Unsynced edits will not be uploaded. The active library will be replaced by a fresh download."
-        )
-      }
-        .libraryError(library)
-    }.librarySheetSize()
-  }
-  private func run(_ action: @escaping @MainActor () async throws -> Void) {
-    Task { do { try await action() } catch { library.errorMessage = error.localizedDescription } }
   }
 }
 
@@ -609,10 +516,10 @@ private struct ConflictReview: View {
             )
           }
           Section("This device") { details(record) }
-          Section("iCloud") { details(conflict.remote) }
+          Section("Other devices") { details(conflict.remote) }
           Section {
             Button("Keep This Device’s Changes") { resolve(false) }
-            Button("Use iCloud Changes") { resolve(true) }
+            Button("Use Other Device’s Changes") { resolve(true) }
           } footer: {
             Text("Edits to other, non-conflicting fields are kept in either case.")
           }
@@ -648,21 +555,21 @@ private struct ConflictReview: View {
 }
 
 extension View {
-  fileprivate func libraryTextInput() -> some View {
+  func libraryTextInput() -> some View {
     #if os(iOS)
       self.autocorrectionDisabled().textInputAutocapitalization(.never)
     #else
       self.autocorrectionDisabled()
     #endif
   }
-  fileprivate func librarySheetSize() -> some View {
+  func librarySheetSize() -> some View {
     #if os(macOS)
       self.frame(width: 620, height: 640)
     #else
       self.presentationDetents([.large])
     #endif
   }
-  fileprivate func libraryError(_ library: ConnectionLibrary) -> some View {
+  func libraryError(_ library: ConnectionLibrary) -> some View {
     alert(
       "Connection Library",
       isPresented: Binding(

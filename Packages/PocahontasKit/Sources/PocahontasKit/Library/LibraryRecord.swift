@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SecretKind: String, Codable, Sendable { case password, privateKey }
-public enum SecretStorage: String, Codable, Sendable { case device, iCloud }
+public enum SecretStorage: String, Codable, Sendable { case device, account }
 
 /// A logical address, never a Keychain persistent reference or authentication material.
 public struct CredentialReference: Codable, Equatable, Sendable {
@@ -18,11 +18,41 @@ public struct CredentialReference: Codable, Equatable, Sendable {
     revision = UUID()
   }
   public var account: String { "\(ownerScope)/\(id)/\(revision)/\(kind.rawValue)" }
+  private enum CodingKeys: String, CodingKey { case ownerScope, id, revision, kind, storage }
+  public func encode(to encoder: any Encoder) throws {
+    var values = encoder.container(keyedBy: CodingKeys.self)
+    try values.encode(ownerScope, forKey: .ownerScope)
+    try values.encode(id.uuidString.lowercased(), forKey: .id)
+    try values.encode(revision.uuidString.lowercased(), forKey: .revision)
+    try values.encode(kind, forKey: .kind)
+    try values.encode(storage, forKey: .storage)
+  }
 }
 
 public enum SavedAuthentication: Codable, Equatable, Sendable {
   case password(CredentialReference?)
   case identity(UUID)
+
+  private enum CodingKeys: String, CodingKey { case type, reference, id }
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    switch try values.decode(String.self, forKey: .type) {
+    case "password": self = .password(try values.decodeIfPresent(CredentialReference.self, forKey: .reference))
+    case "identity": self = .identity(try values.decode(UUID.self, forKey: .id))
+    default: throw LibraryError.newerSchema
+    }
+  }
+  public func encode(to encoder: any Encoder) throws {
+    var values = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .password(let reference):
+      try values.encode("password", forKey: .type)
+      try values.encodeIfPresent(reference, forKey: .reference)
+    case .identity(let id):
+      try values.encode("identity", forKey: .type)
+      try values.encode(id.uuidString.lowercased(), forKey: .id)
+    }
+  }
 }
 
 /// Endpoint and authentication are one indivisible merge field.
@@ -54,7 +84,7 @@ public struct IdentityMaterial: Codable, Equatable, Sendable {
   }
 }
 
-/// This allowlist is the entire CloudKit payload. No secret values belong here.
+/// Local metadata; shared secret values are encoded separately inside the encrypted snapshot.
 public struct LibraryRecord: Codable, Equatable, Sendable, Identifiable {
   public enum Kind: String, Codable, Sendable {
     case host = "HostProfile"
@@ -79,6 +109,12 @@ public struct LibraryRecord: Codable, Equatable, Sendable, Identifiable {
     self.name = name
     self.identity = identity
   }
+  public init(tombstone id: UUID, kind: Kind) {
+    self.id = id
+    self.kind = kind
+    name = ""
+    deleted = true
+  }
   public func encoded() throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys
@@ -91,7 +127,7 @@ public struct LibraryRecord: Codable, Equatable, Sendable, Identifiable {
     }
     let record = try JSONDecoder().decode(Self.self, from: data)
     guard
-      (record.kind == .host && record.binding != nil && record.identity == nil)
+      record.deleted || (record.kind == .host && record.binding != nil && record.identity == nil)
         || (record.kind == .identity && record.identity != nil && record.binding == nil)
     else {
       throw LibraryError.invalidRecord
@@ -109,7 +145,6 @@ public struct StoredRecord: Codable, Equatable, Sendable, Identifiable {
   public var id: UUID
   public var payload: Data
   public var base: Data?
-  public var systemFields: Data?
   public var dirty: Bool
   public var conflict: RecordConflict?
   public var record: LibraryRecord? { try? LibraryRecord.decode(payload) }
@@ -119,30 +154,27 @@ public struct StoredRecord: Codable, Equatable, Sendable, Identifiable {
     payload = try record.encoded()
     dirty = true
   }
-  init(id: UUID, payload: Data, systemFields: Data) {
+  init(id: UUID, payload: Data) {
     self.id = id
     self.payload = payload
     base = payload
-    self.systemFields = systemFields
     dirty = false
   }
 
   /// Pure three-way merge. Deletion wins; clocks never decide whose edit to discard.
-  public mutating func receive(_ data: Data, systemFields: Data) throws {
+  public mutating func receive(_ data: Data) throws {
     let remote: LibraryRecord
     do { remote = try LibraryRecord.decode(data) } catch LibraryError.newerSchema {
       // Retain an older unsent edit separately; never overwrite the unknown payload.
       if dirty, let local = record { conflict = RecordConflict(remote: local, fields: ["schema"]) }
       payload = data
       base = data
-      self.systemFields = systemFields
       dirty = false
       return
     }
     guard remote.id == id else { throw LibraryError.invalidRecord }
     guard let local = record else { throw LibraryError.newerSchema }
     let ancestor = base.flatMap { try? LibraryRecord.decode($0) }
-    self.systemFields = systemFields
     base = data
     if remote.deleted || !dirty {
       payload = data
@@ -175,11 +207,10 @@ public struct StoredRecord: Codable, Equatable, Sendable, Identifiable {
     payload = try merged.encoded()
   }
 
-  public mutating func acknowledge(_ data: Data, systemFields: Data) throws {
+  public mutating func acknowledge(_ data: Data) throws {
     let saved = try LibraryRecord.decode(data)
     guard saved.id == id else { throw LibraryError.invalidRecord }
     base = data
-    self.systemFields = systemFields
     // A user may have edited again while this particular revision was in flight.
     if record?.revision == saved.revision { dirty = false }
   }
@@ -209,7 +240,7 @@ public struct StoredRecord: Codable, Equatable, Sendable, Identifiable {
 public enum LibraryError: LocalizedError, Sendable {
   case newerSchema, invalidRecord, conflict, missingCredential, locked
   case unavailableKeychain(Int32)
-  case accountChanged, cloudNotConfigured, identityMissing, fingerprintMismatch, recoveryRequired
+  case accountChanged, identityMissing, fingerprintMismatch, recoveryRequired
   public var errorDescription: String? {
     switch self {
     case .newerSchema:
@@ -220,16 +251,14 @@ public enum LibraryError: LocalizedError, Sendable {
       "The credential is not available on this device. Retry later, enter it for this connection, or save a credential on this device."
     case .locked: "Unlock this device to access its Keychain, then try again."
     case .unavailableKeychain(let status):
-      "Keychain is unavailable (\(status)). Check the app’s signing and shared Keychain entitlement."
+      "Keychain is unavailable (\(status)). Unlock this device and check the app’s signing."
     case .accountChanged:
-      "The iCloud account changed. Reopen the connection in the current library."
-    case .cloudNotConfigured:
-      "This build does not have iCloud access. Install a provisioned build with the pocahontas iCloud container and shared Keychain group."
+      "The account changed. Reopen the connection in the current library."
     case .identityMissing:
       "This SSH identity is unavailable. Choose another identity or use a credential for this connection."
     case .fingerprintMismatch: "This private key does not match the saved SSH identity."
     case .recoveryRequired:
-      "iCloud needs recovery. Your local data is preserved; review recovery in iCloud settings."
+      "Your local changes have been preserved. Review the library in Account & Sync."
     }
   }
 }

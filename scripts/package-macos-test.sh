@@ -17,6 +17,7 @@ scripts/generate-project.sh
 xcodebuild -project pocahontas.xcodeproj -scheme pocahontas-macOS \
   -configuration Debug -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_PATH" -disableAutomaticPackageResolution \
+  "POCAHONTAS_SERVER_URL=${POCAHONTAS_SERVER_URL:-}" \
   ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build > "$OUTPUT_DIR/build.log" 2>&1
 APP="$DERIVED_DATA_PATH/Build/Products/Debug/Pocahontas.app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$APP/Contents/Info.plist")" == Pocahontas ]]
@@ -62,9 +63,10 @@ Intel Mac 不能使用此安装包；最低系统版本仍需实机验收。
    127.0.0.1 指当前 MacBook，不是其他电脑的地址。
 4. ＋ / ⌘T 新建会话，⌃Tab / ⌃⇧Tab 切换，标签 × 单独关闭，⌘N 新窗口。
 
-支持 SSH、多会话、本地连接配置与本机服务器指纹信任。
-这个 Debug 包不开启 CloudKit，也不提供密码/私钥持久化；连接时重新输入或导入凭据。
-远端持续任务请使用 tmux。iCloud 联调还需要完成开发者签名配置。
+支持 SSH、多会话、本地连接配置、本机 Keychain 凭据保存与服务器指纹信任。
+账号同步需要打包时配置 Pocahontas server 地址；未配置时使用本地模式。
+已配置的测试包可在 Saved Connections → Account & Sync 注册与登录。
+远端持续任务请使用 tmux。
 本包不包含构建机器的已保存连接、密码、私钥或用户数据。
 
 源码与构建说明：https://github.com/rockdai/pocahontas

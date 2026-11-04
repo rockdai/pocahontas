@@ -8,7 +8,7 @@ Terminal made for coding agents，首版同时支持 iPhone、iPad 和原生 mac
 
 [下载 Mac 测试包（Apple Silicon）](https://github.com/rockdai/pocahontas/raw/refs/heads/main/downloads/Pocahontas-AppleSilicon.zip) · [安装说明与 SHA-256 校验](downloads/README.md)。包内应用名为 **Pocahontas.app**，无需 Xcode；这是尚未公证的本地功能测试版。
 
-通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，在用户开启同步后跨 Apple 设备共享。
+通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，目标是通过 Pocahontas 账号跨 Apple、Android 与鸿蒙设备共享；Android 与鸿蒙客户端尚在规划中。
 
 当前已有三平台 M0 原型：Ghostty / Metal 终端、SSH 密码与加密 OpenSSH Ed25519 私钥认证、首次连接指纹确认、主机密钥变化阻断，以及中文输入、快捷键、粘贴和终端尺寸同步。
 
@@ -16,7 +16,9 @@ App 与终端统一使用固定浅色外观，不跟随系统深色模式，也�
 
 [浏览 iPhone / iPad 界面截图](docs/screenshots/ios-m0/README.md) · [浏览 Mac 界面截图](docs/screenshots/macos-m0/README.md)：连接配置、文件导入、主机指纹、终端、键盘、多行粘贴和错误提示，包含横屏与竖屏。
 
-已加入三端共用的本地连接库、SSH 身份管理、CloudKit 配置同步与逐项选择的 iCloud Keychain 凭据存储。快速连接仅在当前 tab 存续期间将凭据保留在内存中，以便重连，不写入持久存储；已保存连接可在离线时使用。同步实现包括持久 outbox、冲突审阅、删除标记和账号隔离。**当前开发 profile 尚未关联目标 iCloud container，真实跨设备同步仍待签名配置与真机验收**，详见 [iCloud 构建与验收](docs/icloud-setup.md)。
+已加入三端共用的本地连接库与 SSH 身份管理。快速连接仅在当前 tab 存续期间将凭据保留在内存中，以便重连，不写入持久存储；已保存连接可在离线时使用。本地逻辑包括持久 outbox、冲突审阅、删除标记和账号隔离。
+
+**2026-11-04：已实现 Pocahontas server 与三端账号加密同步，移除 iCloud。** Node.js + 阿里云函数计算 + PostgreSQL，只有三张基础表，不使用显式多语句事务和外键。注册验证邮箱；同一个密码完成登录与本机解密，改密码保留资料，邮箱重置需确认清空云端资料。已通过本地双客户端与真实 PostgreSQL 联调；云端服务、真实邮件和真机跨网络验证待部署。[运行、部署与 App 配置](server/README.md#运行方式)。不做旧版本兼容或数据迁移。
 
 iPhone、iPad 和 Mac 都支持多个并行 SSH 会话：点击顶部 **＋** 新建，点击标签切换，点击标签的 **×** 单独关闭。同一台主机也可打开多个独立会话；切换标签或填写新连接时，其他连接继续接收输出。每个会话保留独立的终端内容、认证状态和输入。
 
@@ -24,7 +26,7 @@ Mac 还支持多个原生窗口：**⌘T** 新会话、**⌘N** 新窗口、**�
 
 切换 tab、重新激活 Mac 窗口或返回 iOS App 时，会检测当前会话的 SSH 连接；静默失联在 5 秒内判定，并尝试重连。健康连接保持原有 shell。iOS 进入后台或 Mac 睡眠时仍会主动断开 SSH，返回后按激活的会话恢复，其他会话等切换时再恢复。重连保留原终端缓冲区，失败时可点击 **Reconnect**；新连接的服务器输出仍可能改变终端内容。认证或主机信任失败需要重新发起连接；正常退出远端 shell 后只允许手动重连。关闭 tab/窗口、连接库账号变化会清除重连凭据。自动 tmux 工作区尚未实现，重连会打开新的远端 shell；持续运行的任务需在远端 tmux 中运行并手动 attach。
 
-[浏览多会话截图与验证记录](docs/screenshots/sessions/README.md) · [浏览连接库、SSH 身份与 iCloud 设置的三端截图](docs/screenshots/library/README.md)。
+[浏览多会话截图与验证记录](docs/screenshots/sessions/README.md) · [浏览连接库与 SSH 身份的历史三端截图（含旧 iCloud UI）](docs/screenshots/library/README.md)。
 
 ## 构建
 
@@ -44,7 +46,16 @@ open pocahontas.xcodeproj
 
 ## 验证
 
-iCloud 联调使用 `pocahontas-iCloud` 或 `pocahontas-macOS-iCloud` scheme（`CloudDebug`），两端需使用同一开发团队、container 和共享 Keychain group。普通 Mac Debug 不具备 Data Protection Keychain 凭据权限，因此可保存配置，连接时输入密码；正式签名构建才启用持久凭据。具体步骤见 [iCloud 构建说明](docs/icloud-setup.md)。
+账号服务和客户端验证入口如下，需要 Node.js 20+ 与 PostgreSQL 的 `initdb` / `pg_ctl`。测试自动建立并销毁临时数据库，邮件留在测试内存中，不访问真实账号。
+
+```sh
+npm ci --prefix server
+npm test --prefix server
+scripts/test-account.sh
+scripts/capture-account-screenshots.sh
+```
+
+账号截图与平台验收情况见 [Account & Sync](docs/screenshots/account/README.md)。未设置 `POCAHONTAS_SERVER_URL` 时保留本地模式；配置方法见 [server](server/README.md#app-配置)。Mac 普通 Debug 使用本机 login Keychain 保存凭据和登录材料，不需要 iCloud entitlement。
 
 共享逻辑测试：
 
@@ -84,8 +95,9 @@ scripts/test-macos.sh
 ## 设计与集成记录
 
 - [产品范围、终端架构与实施顺序](docs/architecture.md)
-- [SSH 连接库与 iCloud 同步设计](docs/ssh-sync.md)
+- [Pocahontas 统一后台：账号与密文存储](server/README.md)
+- [多端连接库与凭据](docs/ssh-sync.md)
 - [M0 实现与验证记录](docs/m0-integration.md)
 - [依赖来源与许可证](THIRD_PARTY_NOTICES.md)
 
-目标架构：SwiftUI 原生界面、共享 Swift Package、GhosttyKit + madeye passthru IO、SSH transport，以及 CloudKit 配置同步 + iCloud Keychain 凭据同步。
+目标架构：Apple 原生界面与共享 Swift Package、GhosttyKit + madeye passthru IO、SSH 直连，以及 Node.js / 阿里云函数计算 / PostgreSQL 统一后台。连接库在客户端加密后上传，平台安全存储仅用于本机凭据和解锁密钥。

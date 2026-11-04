@@ -1,6 +1,6 @@
 # M0 集成记录
 
-> 本文记录 M0 阶段。2026-11-01 新增的连接库与 iCloud 实现、签名边界及验收状态见 [iCloud 构建与验收](icloud-setup.md)。
+> 本文是 M0 历史记录，下面的 iCloud 规划已经废弃。2026-11-03 起采用 [Pocahontas 统一后台](../server/README.md)；不再配置 iCloud，也不迁移旧数据。历史测试结果不代表新后台已通过验收。
 
 日期：2026-10-26；三平台更新：2026-10-31。这个切片验证 iOS / iPadOS / macOS 终端与真实 SSH 协议的闭环；产品范围仍以 [架构设计](architecture.md) 为准。
 

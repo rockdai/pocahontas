@@ -4,14 +4,19 @@ import Foundation
 public struct LibraryState: Codable, Sendable {
   public var records: [UUID: StoredRecord] = [:]
   public var localOverrides: [UUID: SavedAuthentication] = [:]
-  public var engineState: Data?
-  public var zoneKnown = false
+  public var remoteUpdatedAt: String?
+  public var passwordUpdatedAt: String?
+  public var sharedCredentials: [UUID: CredentialReference] = [:]
+  public var pendingUpload: PendingUpload?
+  public var needsUpload = false
+  public var editRevision = UUID()
+  public var blockedVault: RemoteVault?
+  public var archiveScope: String?
   public var recoveryReason: String?
   public init() {}
 }
 
-/// One transactional snapshot per account. The library is small; a single Core Data
-/// row makes the record/outbox/engine checkpoint atomic without a second journal.
+/// A local atomic snapshot keeps edits and the pending encrypted upload together.
 @MainActor public final class LibraryStore {
   private let context: NSManagedObjectContext
   private let coordinator: NSPersistentStoreCoordinator
@@ -40,7 +45,7 @@ public struct LibraryState: Codable, Sendable {
           for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         ).appendingPathComponent("ConnectionLibrary", isDirectory: true)
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-      storeURL = url ?? directory.appendingPathComponent("Library.sqlite")
+      storeURL = url ?? directory.appendingPathComponent("AccountLibrary.sqlite")
     }
     var options: [AnyHashable: Any] = [
       NSMigratePersistentStoresAutomaticallyOption: true,

@@ -1,10 +1,10 @@
-# 连接库与 iCloud 界面
+# 连接库历史界面（2026-11-01）
 
 2026-11-01：46 张实际运行截图，iPhone 20 张、iPad 20 张、Mac 6 张。全部保持浅色外观，未重绘、拼接或修饰界面。
 
 iPhone 17 Pro 与 iPad Pro 11-inch (M5) 使用 iOS / iPadOS 26.5 模拟器。系统为深色，App 固定浅色。测试通过真实本机 Keychain 保存密码，重启 App 后连接 loopback SSH fixture，并导入测试 Ed25519 key；图中的私钥为仓库公开的测试材料，不能用于真实服务器。
 
-同步设置如实显示当前本地开发构建没有 iCloud 权限。这些图片验证界面与本地功能，不证明 CloudKit 或 iCloud Keychain 已跨设备同步。容器授权和真机验收见 [iCloud 构建说明](../../icloud-setup.md)。
+同步设置如实显示当前本地开发构建没有 iCloud 权限。这些图片验证界面与本地功能，不证明 CloudKit 或 iCloud Keychain 已跨设备同步。这些 iCloud 设置属于已废弃路线，图片只保留历史验证记录；当前设计见 [Pocahontas 后台](../../../server/README.md)。
 
 Mac 截图由 Computer Use 操作真实 App 窗口保存；本轮 XCTest 等待 IDE 测试会话建立，未执行完成，后续 Computer Use 也无法获取新启动的可截图窗口，因此本轮仅保留已实际截取的 6 张，不以模拟图补齐。
 

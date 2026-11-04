@@ -7,7 +7,6 @@ options:
   createIntermediateGroups: true
 configs:
   Debug: debug
-  CloudDebug: debug
   Release: release
 settings:
   base:
@@ -15,17 +14,8 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
-    POCAHONTAS_CLOUD_ENABLED: "NO"
-    POCAHONTAS_CLOUD_ENVIRONMENT: Development
-    POCAHONTAS_PUSH_ENVIRONMENT: development
+    POCAHONTAS_SERVER_URL: ""
     "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
-  configs:
-    CloudDebug:
-      POCAHONTAS_CLOUD_ENABLED: "YES"
-    Release:
-      POCAHONTAS_CLOUD_ENABLED: "YES"
-      POCAHONTAS_CLOUD_ENVIRONMENT: Production
-      POCAHONTAS_PUSH_ENVIRONMENT: production
 packages:
   PocahontasKit:
     path: Packages/PocahontasKit
@@ -56,19 +46,12 @@ targets:
         OTHER_LDFLAGS: [-ObjC, -lstdc++]
         ENABLE_BITCODE: false
         LM_SKIP_METADATA_EXTRACTION: YES
-      configs:
-        CloudDebug:
-          CODE_SIGN_ENTITLEMENTS: Apps/iOS/Cloud.entitlements
-        Release:
-          CODE_SIGN_ENTITLEMENTS: Apps/iOS/Cloud.entitlements
     info:
       path: Apps/iOS/Info.plist
       properties:
         CFBundleDisplayName: Pocahontas
-        PocahontasCloudEnabled: "$(POCAHONTAS_CLOUD_ENABLED)"
-        PocahontasKeychainGroup: "$(AppIdentifierPrefix)com.rockdai.pocahontas.shared"
+        PocahontasServerURL: "$(POCAHONTAS_SERVER_URL)"
         UILaunchScreen: {}
-        UIBackgroundModes: [remote-notification]
         UIUserInterfaceStyle: Light
         UIApplicationSupportsIndirectInputEvents: true
         NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
@@ -106,17 +89,11 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY: "-"
-        CloudDebug:
-          CODE_SIGN_IDENTITY: Apple Development
-          CODE_SIGN_ENTITLEMENTS: Apps/macOS/Cloud.entitlements
-        Release:
-          CODE_SIGN_ENTITLEMENTS: Apps/macOS/Cloud.entitlements
     info:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleDisplayName: Pocahontas
-        PocahontasCloudEnabled: "$(POCAHONTAS_CLOUD_ENABLED)"
-        PocahontasKeychainGroup: "$(AppIdentifierPrefix)com.rockdai.pocahontas.shared"
+        PocahontasServerURL: "$(POCAHONTAS_SERVER_URL)"
         NSPrincipalClass: NSApplication
         NSRequiresAquaSystemAppearance: true
         NSLocalNetworkUsageDescription: pocahontas connects to your SSH development machines on the local network.
@@ -136,7 +113,7 @@ targets:
   PocahontasMacUITests:
     type: bundle.ui-testing
     platform: macOS
-    sources: [Tests/macOSUI]
+    sources: [Tests/macOSUI, Tests/AccountUI]
     dependencies:
       - target: pocahontas-macOS
     settings:
@@ -184,6 +161,7 @@ targets:
     platform: iOS
     sources:
       - Tests/LibraryScreenshots
+      - Tests/AccountUI
       - path: Packages/PocahontasKit/Tests/PocahontasKitTests/Fixtures/ed25519_plain
         buildPhase: resources
     dependencies:
@@ -218,7 +196,9 @@ schemes:
       targets:
         pocahontas: all
     test:
-      targets: [PocahontasLibraryScreenshotTests]
+      environmentVariables:
+        POCAHONTAS_ACCOUNT_TEST_URL: "$(POCAHONTAS_SERVER_URL)"
+      targets: [PocahontasAppTests, PocahontasLibraryScreenshotTests]
   pocahontas-macOS:
     build:
       targets:
@@ -227,6 +207,7 @@ schemes:
       environmentVariables:
         POCAHONTAS_MAC_TEST_PORT: "$(POCAHONTAS_MAC_TEST_PORT)"
         POCAHONTAS_SESSION_TEST_PORT: "$(POCAHONTAS_MAC_TEST_PORT)"
+        POCAHONTAS_ACCOUNT_TEST_URL: "$(POCAHONTAS_SERVER_URL)"
       targets: [PocahontasMacTests, PocahontasMacUITests]
   pocahontas:
     build:
@@ -240,19 +221,3 @@ schemes:
         pocahontas: all
     test:
       targets: [PocahontasScreenshotTests]
-  pocahontas-iCloud:
-    build:
-      targets:
-        pocahontas: all
-    run:
-      config: CloudDebug
-    archive:
-      config: Release
-  pocahontas-macOS-iCloud:
-    build:
-      targets:
-        pocahontas-macOS: all
-    run:
-      config: CloudDebug
-    archive:
-      config: Release
