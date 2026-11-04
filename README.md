@@ -6,6 +6,14 @@
 
 Terminal made for coding agents，首版同时支持 iPhone、iPad 和原生 macOS。
 
+## 贡献政策
+
+本仓库公开代码，但不接受外部 pull request 或外部贡献者的提交。代码变更仅由维护者和获授权的仓库协作者通过内部 PR 完成；不会合并或代为提交外部贡献。
+
+GitHub 在 **Settings → General → Features → Pull requests → Collaborators only** 限制 PR 创建者；**Settings → Actions → General → Fork pull request workflows** 设置所有外部贡献者均需审批，且不批准外部代码运行。公开代码及许可证授予的权利不受这项贡献政策影响。
+
+## 产品
+
 [下载 Mac 测试包（Apple Silicon）](https://github.com/rockdai/pocahontas/raw/refs/heads/main/downloads/Pocahontas-AppleSilicon.zip) · [安装说明与 SHA-256 校验](downloads/README.md)。包内应用名为 **Pocahontas.app**，无需 Xcode；这是尚未公证的本地功能测试版。
 
 通过 SSH 连接开发机器，使用 Ghostty 渲染终端，以远端 tmux 会话承载持续运行的 coding agent。通过统一的连接库管理主机、SSH 身份和工作区，目标是通过 Pocahontas 账号跨 Apple、Android 与鸿蒙设备共享；Android 与鸿蒙客户端尚在规划中。
@@ -45,6 +53,14 @@ open pocahontas.xcodeproj
 `project.yml` 是工程配置源；重新生成工程使用 `scripts/generate-project.sh`，该脚本同时将已提交的 Swift package 版本锁复制到 Xcode。Ghostty 构建产物位于 `Frameworks/`，不入库；构建脚本只修改项目内的 Zig 缓存。
 
 三端应用图标使用 `assets/logo` 中的白底黑色 P。执行 `swift scripts/generate-logo.swift` 可同时重建 Logo 和共享的 AppIcon 资源。
+
+### GitHub Actions
+
+`Apple CI` 使用两台 Apple Silicon 自托管 runner：`pocahontas-macmini-2026` 构建、测试共享逻辑并打包 macOS；`pocahontas-macmini-2024` 构建 iPhone / iPad App 与测试目标。每台使用独立的 `~/actions-runner-pocahontas` 目录，与已有项目的 runner 分开。Mac 测试包保留在该 runner 工作目录的 `.build/exports/`，下次任务会清理，不自动上传 GitHub 存储。
+
+工作流只接受本仓库 `main` 的 push，或在 Actions 页面选择 `main` 手动运行；手动选择其他分支会跳过，PR 不触发。checkout 固定本次事件的 commit，权限仅为 `contents: read`。FC 部署仍使用 GitHub 的 Ubuntu runner。自托管机器需要保持开机联网；默认 launchd 服务在用户登录后启动。Mac UI 自动化仍需单独验证图形会话与系统权限。
+
+贡献声明和 PR 限制不能代替执行隔离：不要批准外部 fork 工作流，也不要把外部脚本或提交引入 `main`；维护者账号、依赖和同机其他 runner 被入侵仍可能影响机器。
 
 ## 验证
 
