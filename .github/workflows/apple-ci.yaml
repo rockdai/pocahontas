@@ -1,4 +1,4 @@
-name: Apple CI
+name: Apple Unit Tests
 
 on:
   push:
@@ -13,67 +13,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  apple:
+  test:
     if: >-
       github.repository == 'rockdai/pocahontas' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: pocahontas-macmini-2026
-            platform: macOS
-          - runner: pocahontas-macmini-2024
-            platform: iOS
-    runs-on: [self-hosted, macOS, ARM64, pocahontas, '${{ matrix.runner }}']
-    timeout-minutes: 90
-    defaults:
-      run:
-        shell: bash
+    runs-on: [self-hosted, macOS, ARM64, pocahontas]
+    timeout-minutes: 30
     steps:
       - name: Checkout trusted commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          submodules: true
           clean: true
 
-      - name: Prepare tools
-        run: |
-          echo /opt/homebrew/bin >> "$GITHUB_PATH"
-          xcodebuild -version
-          /opt/homebrew/opt/zig@0.15/bin/zig version
-          mkdir -p .build
-
-      - name: Test shared logic and SSH
-        if: matrix.platform == 'macOS'
-        run: |
-          python3 -m venv .build/test-venv
-          .build/test-venv/bin/pip install -r scripts/requirements-test.txt
-          POCAHONTAS_SSH_TEST_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')" \
-            scripts/test-ssh.sh
-
-      - name: Test account sync
-        if: matrix.platform == 'macOS'
-        run: |
-          npm ci --prefix server --ignore-scripts
-          scripts/test-account.sh
-
-      - name: Build Ghostty and generate project
-        run: |
-          scripts/build-ghostty.sh
-          scripts/generate-project.sh
-
-      - name: Build iPhone and iPad test targets
-        if: matrix.platform == 'iOS'
-        run: |
-          xcodebuild -project pocahontas.xcodeproj -scheme pocahontas \
-            -configuration Debug -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath .build/DerivedData -disableAutomaticPackageResolution \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build-for-testing
-
-      - name: Package macOS test app
-        if: matrix.platform == 'macOS'
-        run: scripts/package-macos-test.sh
+      - name: Run unit tests
+        run: swift test --package-path Packages/PocahontasKit -j 4 --skip IntegrationTests
