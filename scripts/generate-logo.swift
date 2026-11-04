@@ -85,3 +85,37 @@ else { fatalError("Unable to create the PNG output") }
 CGImageDestinationAddImage(destination, rendered, nil)
 guard CGImageDestinationFinalize(destination) else { fatalError("Unable to write the PNG") }
 print("Generated pocahontas.svg and opaque 1024×1024 pocahontas.png from Contrail One.")
+
+let catalog = root.appendingPathComponent("Apps/Shared/Assets.xcassets")
+let icons = catalog.appendingPathComponent("AppIcon.appiconset")
+try FileManager.default.createDirectory(at: icons, withIntermediateDirectories: true)
+let info: [String: Any] = ["author": "xcode", "version": 1]
+func writeJSON(_ value: [String: Any], to url: URL) throws {
+  var data = try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+  data.append(0x0a)
+  try data.write(to: url, options: .atomic)
+}
+try writeJSON(["info": info], to: catalog.appendingPathComponent("Contents.json"))
+var images: [[String: String]] = [["filename": "icon-1024.png", "idiom": "universal",
+  "platform": "ios", "size": "1024x1024"]]
+for size in [16, 32, 128, 256, 512] {
+  for scale in [1, 2] {
+    images.append(["filename": "icon-\(size * scale).png", "idiom": "mac",
+      "size": "\(size)x\(size)", "scale": "\(scale)x"])
+  }
+}
+try writeJSON(["images": images, "info": info], to: icons.appendingPathComponent("Contents.json"))
+for size in [16, 32, 64, 128, 256, 512, 1024] {
+  guard let scaled = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
+    bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
+    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+  else { fatalError("Unable to create the \(size) px icon canvas") }
+  scaled.interpolationQuality = .high
+  scaled.draw(rendered, in: CGRect(x: 0, y: 0, width: size, height: size))
+  guard let icon = scaled.makeImage(), let output = CGImageDestinationCreateWithURL(
+    icons.appendingPathComponent("icon-\(size).png") as CFURL, "public.png" as CFString, 1, nil)
+  else { fatalError("Unable to create the \(size) px icon output") }
+  CGImageDestinationAddImage(output, icon, nil)
+  guard CGImageDestinationFinalize(output) else { fatalError("Unable to write the \(size) px icon") }
+}
+print("Generated the shared iPhone, iPad and Mac AppIcon asset catalog.")

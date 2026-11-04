@@ -14,7 +14,7 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
-    POCAHONTAS_SERVER_URL: ""
+    POCAHONTAS_SERVER_URL: "https://pocahontas-api.rockdai.com"
     "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 packages:
   PocahontasKit:
@@ -39,6 +39,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas
         PRODUCT_NAME: Pocahontas
         PRODUCT_MODULE_NAME: pocahontas
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Apps/iOS/Pocahontas.entitlements
         "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Apps/iOS/Simulator.entitlements
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
@@ -80,6 +81,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas.mac
         PRODUCT_MODULE_NAME: PocahontasMac
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_NAME: Pocahontas
         POCAHONTAS_MAC_TEST_PORT: "62225"
         CODE_SIGN_ENTITLEMENTS: Apps/macOS/Pocahontas.entitlements

@@ -1,6 +1,6 @@
 # Pocahontas server
 
-更新：2026-11-04。已实现账号 API、邮件验证码、密文存储与 Apple 客户端接入，本地端到端测试通过。技术栈为 **Node.js + 阿里云函数计算 + PostgreSQL**；目录与服务名统一使用 `server`。FC 与真实邮件尚未部署联调。
+更新：2026-11-05。已实现账号 API、邮件验证码、密文存储与 Apple 客户端接入，本地端到端测试通过。技术栈为 **Node.js + 阿里云函数计算 + PostgreSQL**；目录与服务名统一使用 `server`。FC 已部署并通过基础接口复测，真实邮件和跨设备线上全流程验收尚待完成。
 
 ## 首期范围
 
@@ -170,9 +170,9 @@ scripts/package-server.sh
 
 ### App 配置
 
-生成 Xcode 工程后，将 `POCAHONTAS_SERVER_URL` 构建设置设为部署的 HTTPS 根地址（无路径前缀），例如通过 `xcodebuild ... POCAHONTAS_SERVER_URL=https://api.example.com build`。默认留空，App 的本地 SSH 和连接库可用，账号按钮会提示尚未配置。测试仅允许 loopback HTTP；正式环境必须 HTTPS，账号请求不跟随重定向。
+`project.yml` 中的 `POCAHONTAS_SERVER_URL` 默认设为 `https://pocahontas-api.rockdai.com`，iPhone、iPad 和 Mac 构建均使用该地址。可通过 `xcodebuild ... POCAHONTAS_SERVER_URL=https://api.example.com build` 覆盖为其他 HTTPS 根地址（无路径前缀），显式设为空时使用本地模式。测试仅允许 loopback HTTP；正式环境必须 HTTPS，账号请求不跟随重定向。
 
-Mac 测试包同样接收该配置：`POCAHONTAS_SERVER_URL=https://api.example.com scripts/package-macos-test.sh`，需先提交代码，包内会记录源码版本。
+Mac 测试包默认使用上述正式地址，也支持 `POCAHONTAS_SERVER_URL=https://api.example.com scripts/package-macos-test.sh` 覆盖；需先提交代码，包内会记录源码版本。
 
 三端从 Saved Connections → Account & Sync 注册、登录、同步及修改密码。邮箱重置会再次确认清空云端资料。旧密码状态下的未同步编辑单独保留，可手动复制到本机库，不自动回传。暂不实现后台推送；本机修改、启动和返回前台时触发同步，也可点 Sync Now。
 
@@ -180,4 +180,4 @@ Mac 测试包同样接收该配置：`POCAHONTAS_SERVER_URL=https://api.example.
 
 已删除 CloudSync/CKSyncEngine、Apple 账号绑定、iCloud 设置与签名配置，接入 server。Keychain 只做本机存储，不启用 synchronizable。保留本机连接库和冲突合并代码；改用整份快照与已有更新时间，不保留 CloudKit 系统字段、云端游标或迁移入口。
 
-本地验证覆盖注册与重置边界、跨实例限流、并发单次消费、消费后中断、旧码和旧令牌失效、账号隔离、快照并发写与相同密文重试。Swift 与 Node 独立实现的密码派生 / AES-GCM 测试向量一致；两个独立客户端通过真实 Node HTTP 服务和临时 PostgreSQL 验证共享凭据、离线合并、改密 / 重置、旧编辑保留，以及写入成功但响应丢失后的恢复。FC、真实邮件、真机与跨网络验收仍待执行；本地结果不能代替这些验证。
+本地验证覆盖注册与重置边界、跨实例限流、并发单次消费、消费后中断、旧码和旧令牌失效、账号隔离、快照并发写与相同密文重试。Swift 与 Node 独立实现的密码派生 / AES-GCM 测试向量一致；两个独立客户端通过真实 Node HTTP 服务和临时 PostgreSQL 验证共享凭据、离线合并、改密 / 重置、旧编辑保留，以及写入成功但响应丢失后的恢复。正式 FC 的基础接口已复测，完整线上账号流程、真实邮件、真机与跨网络验收仍待执行；本地结果不能代替这些验证。

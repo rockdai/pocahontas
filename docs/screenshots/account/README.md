@@ -1,6 +1,6 @@
 # Account & Sync
 
-2026-11-04。使用一次性 iPhone / iPad 模拟器、真实 App 界面、本机 Node HTTP fixture 和临时 PostgreSQL。设备设为深色，App 和弹窗保持浅色。所有账号、验证码、密码均为测试数据；邮件留在 fixture 内存中，没有投递真实邮件。
+2026-11-05。使用一次性 iPhone / iPad 模拟器、真实 App 界面、本机 Node HTTP fixture 和临时 PostgreSQL。设备设为深色，App 和弹窗保持浅色。所有账号、验证码、密码均为测试数据；邮件留在 fixture 内存中，没有投递真实邮件。
 
 每个平台保留 9 张原始 XCTest 截图，覆盖登录、邮箱注册、同步状态、冷启动恢复、密码重置及清空确认；安全输入内容可能被系统截图遮蔽。测试会退出并用已输入的密码重新登录，验证密码输入、Keychain 恢复与退出清理。重置界面测试在确认弹窗取消；真正的清空、重加密和旧编辑保留由 `scripts/test-account.sh` 验证。
 
@@ -33,4 +33,4 @@ ACCOUNT_TEST_DEVICES='iphone ipad' scripts/capture-account-screenshots.sh
 
 Mac 编译和独立 Keychain 测试已通过；Mac XCUITest 在启用系统自动化模式时超时，桌面截图也返回 `could not create image from display`。扩展 Mac 原生套件停在 XCTest 与 Xcode 建立测试会话的阶段，已停止，不能视为通过。因此本目录没有伪造或沿用旧版本的 Mac 截图；需在可用的图形会话中执行 `ACCOUNT_TEST_DEVICES=macos scripts/capture-account-screenshots.sh` 补验。
 
-真实 FC、发信服务、真机和跨网络同步尚待部署联调，参见 [server](../../../server/README.md#运行方式)。
+正式 FC 服务已部署；本次使用 Swift 客户端验证了正式地址的预登录接口与未登录错误处理。真实邮件、完整线上账号流程、真机和跨网络同步尚待验收，参见 [server](../../../server/README.md#运行方式)。
