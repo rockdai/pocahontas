@@ -14,8 +14,6 @@ export function configFromEnv(env = process.env) {
   const databaseURL = required('DATABASE_URL');
   const database = new URL(databaseURL);
   if (database.search) throw new Error('Configure PostgreSQL TLS with DATABASE_CA_FILE, not URL parameters');
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(database.hostname);
-  if (env.DATABASE_TLS === 'false' && !local) throw new Error('Only a loopback database may disable TLS');
   const ssl = env.DATABASE_TLS === 'false' ? false : { rejectUnauthorized: true,
     ...(env.DATABASE_CA_FILE ? { ca: readFileSync(env.DATABASE_CA_FILE, 'utf8') } : {}) };
   const endpoint = new URL(env.MAIL_ENDPOINT ?? 'https://dm.aliyuncs.com/');

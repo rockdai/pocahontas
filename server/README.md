@@ -92,7 +92,7 @@ iCloud 路线取消，旧数据不迁移，不兼容未发布的旧版本。SSH 
 
 一个 Node ES modules 服务部署到阿里云 FC，原生 `node:http` / `node:crypto` / `node:test`，唯一直接运行依赖为 `pg`。不引入框架、ORM、Redis、MQ 或独立同步服务。邮件使用原生 fetch 调用阿里云 DirectMail，3 秒超时，失败仅记录事件与 codeId，不记录验证码或收件地址。
 
-PostgreSQL 与 FC 使用同地域 VPC，连接验证 TLS；连接凭据通过部署配置提供。每个实例复用一个小连接池（初始 max=2），实例上限按数据库连接预算设置。不得每请求新建池；不依赖响应返回后仍会执行的 Promise。过期验证码、限流计数，以及创建超过 24 小时仍未激活的用户，由同代码包的定时清理入口删除；用户清理必须带 password_updated_at IS NULL 条件。原生 crypto 使用异步 API，密码验证前限流。
+PostgreSQL 与 FC 使用同地域 VPC，默认启用 TLS 并验证证书；VPC 内网连接可显式设置 `DATABASE_TLS=false` 关闭 TLS，数据库连接将明文传输。连接凭据通过部署配置提供。每个实例复用一个小连接池（初始 max=2），实例上限按数据库连接预算设置。不得每请求新建池；不依赖响应返回后仍会执行的 Promise。过期验证码、限流计数，以及创建超过 24 小时仍未激活的用户，由同代码包的定时清理入口删除；用户清理必须带 password_updated_at IS NULL 条件。原生 crypto 使用异步 API，密码验证前限流。
 
 ### 本地运行与测试
 
@@ -106,7 +106,7 @@ cd server
 node --env-file=.env src/main.js
 ```
 
-`GET /healthz` 只检查进程存活，不查询数据库。默认监听 `127.0.0.1:9000`。只有 loopback PostgreSQL 可设置 `DATABASE_TLS=false`，远程连接始终验证证书。`DATABASE_CA_FILE` 为可选项：默认使用 Node.js 的受信任 CA，只有数据库证书所用 CA 未被信任时才需指定 CA 文件。禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
+`GET /healthz` 只检查进程存活，不查询数据库。默认监听 `127.0.0.1:9000`。`DATABASE_TLS` 仅在值为 `false` 时关闭 TLS，未设置时启用 TLS 并验证证书；此配置适用于本机和远程数据库。`DATABASE_CA_FILE` 为可选项：启用 TLS 时默认使用 Node.js 的受信任 CA，只有数据库证书所用 CA 未被信任时才需指定 CA 文件。禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
 
 ```sh
 npm test --prefix server
@@ -144,12 +144,13 @@ scripts/package-server.sh
 
 | 变量 | 默认值 / 配置条件 |
 | --- | --- |
+| `DATABASE_TLS` | 默认启用 TLS 并验证证书；VPC 内网连接可设置为 `false` 关闭 TLS，无需配置 `DATABASE_CA_FILE`。 |
 | `MAIL_REGION` | 默认 `cn-hangzhou`；使用其他邮件地域时修改。 |
 | `MAIL_ENDPOINT` | 默认 `https://dm.aliyuncs.com/`；使用其他邮件地域时填写对应 API 地址。 |
 | `MAIL_SECURITY_TOKEN` | 使用 STS 临时凭据时填写配套 Token；长期 AccessKey 不填。 |
 | `DATABASE_CA_FILE` | 仅数据库 CA 未被 Node.js 信任时填写部署包内可读的 CA 文件路径。 |
 
-当前 `fc.handler` / `fc.cleanup` 入口不需要 `HOST` 或 `PORT`；FC 连接远程数据库时不配置 `DATABASE_TLS=false`。旧的两个服务端密钥配置已由 `SECRET_KEY` 替代；更换该值会使旧登录令牌和未使用验证码失效，并重置限流标识。它不参与客户端 SSH 资料的加解密。
+当前 `fc.handler` / `fc.cleanup` 入口不需要 `HOST` 或 `PORT`；FC 通过 VPC 内网连接未启用 SSL 的数据库时，设置 `DATABASE_TLS=false`。旧的两个服务端密钥配置已由 `SECRET_KEY` 替代；更换该值会使旧登录令牌和未使用验证码失效，并重置限流标识。它不参与客户端 SSH 资料的加解密。
 
 ### GitHub Actions 自动部署
 

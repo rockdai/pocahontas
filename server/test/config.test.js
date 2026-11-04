@@ -27,14 +27,18 @@ test('deployment accepts one shared secret and rejects missing or malformed keys
   }
 });
 
-test('deployment rejects remote unverified database TLS', () => {
+test('deployment permits explicit TLS opt-out and otherwise verifies database certificates', () => {
   const env = environment();
   assert.equal(configFromEnv(env).pool.max, 2);
-  assert.throws(() => configFromEnv({ ...env, DATABASE_URL: 'postgres://fixture@db.example.com/fixture' }));
+  for (const host of ['localhost', '10.0.0.5', 'db.example.com']) {
+    const database = { ...env, DATABASE_URL: `postgres://fixture@${host}/fixture` };
+    assert.equal(configFromEnv({ ...database, DATABASE_TLS: 'false' }).pool.ssl, false);
+    for (const value of [undefined, 'true', '', 'FALSE']) {
+      assert.deepEqual(configFromEnv({ ...database, DATABASE_TLS: value }).pool.ssl, { rejectUnauthorized: true });
+    }
+  }
   assert.throws(() => configFromEnv({ ...env, DATABASE_URL: env.DATABASE_URL + '?sslmode=disable' }));
   assert.throws(() => configFromEnv({ ...env, MAIL_ENDPOINT: 'http://mail.example.com' }));
-  assert.deepEqual(configFromEnv({ ...env, DATABASE_TLS: undefined,
-    DATABASE_URL: 'postgres://fixture@db.example.com/fixture' }).pool.ssl, { rejectUnauthorized: true });
 });
 
 test('DirectMail signs canonical encoded parameters and handles provider errors', async () => {
