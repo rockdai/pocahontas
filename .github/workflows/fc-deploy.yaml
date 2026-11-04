@@ -1,0 +1,64 @@
+name: Deploy to FC
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocahontas-server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'rockdai/pocahontas'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci --prefix server --ignore-scripts
+
+      - name: Test server
+        run: PG_BIN="$(pg_config --bindir)" npm test --prefix server
+
+      - name: Package server
+        run: scripts/package-server.sh
+
+      - name: Setup Aliyun CLI
+        uses: aliyun/setup-aliyun-cli-action@09a5f86915bb556e27bf050e9a5e339aeb073df5
+        with:
+          version: '3.5.2'
+
+      - name: Update function code
+        env:
+          FC_REGION: ${{ vars.FC_REGION }}
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ACCESS_KEY_SECRET }}
+          ALIBABA_CLOUD_IGNORE_PROFILE: 'TRUE'
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${FC_REGION:?Set repository variable FC_REGION}"
+          : "${ALIBABA_CLOUD_ACCESS_KEY_ID:?Set repository secret ACCESS_KEY_ID}"
+          : "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:?Set repository secret ACCESS_KEY_SECRET}"
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const zipFile = readFileSync('.build/pocahontas-server.zip').toString('base64');
+          writeFileSync('.build/fc-code.json', JSON.stringify({ code: { zipFile } }));
+          JS
+          aliyun fc PUT /2023-03-30/functions/pocahontas-server \
+            --version 2023-03-30 --region "$FC_REGION" --secure \
+            --body-file .build/fc-code.json \
+            --cli-query '{functionName:functionName,codeChecksum:codeChecksum,lastUpdateStatus:lastUpdateStatus}'
