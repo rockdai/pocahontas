@@ -10,8 +10,7 @@ export function configFromEnv(env = process.env) {
     try { return binary(required(name), 32); }
     catch { throw new Error(`${name} must be 32 bytes in canonical Base64URL`); }
   }
-  const signingKey = key('SIGNING_KEY'), verificationKey = key('VERIFICATION_KEY');
-  if (signingKey.equals(verificationKey)) throw new Error('Use independent signing and verification keys');
+  const secretKey = key('SECRET_KEY');
   const databaseURL = required('DATABASE_URL');
   const database = new URL(databaseURL);
   if (database.search) throw new Error('Configure PostgreSQL TLS with DATABASE_CA_FILE, not URL parameters');
@@ -21,11 +20,11 @@ export function configFromEnv(env = process.env) {
     ...(env.DATABASE_CA_FILE ? { ca: readFileSync(env.DATABASE_CA_FILE, 'utf8') } : {}) };
   const endpoint = new URL(env.MAIL_ENDPOINT ?? 'https://dm.aliyuncs.com/');
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password) throw new Error('MAIL_ENDPOINT must use HTTPS');
-  return { signingKey, verificationKey,
+  return { secretKey,
     pool: { connectionString: databaseURL, ssl, max: 2, connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 30000, statement_timeout: 5000, query_timeout: 6000 },
     mail: { endpoint: endpoint.href, region: env.MAIL_REGION ?? 'cn-hangzhou', sender: required('MAIL_SENDER'),
-      accessKeyID: required('MAIL_ACCESS_KEY_ID'), accessKeySecret: required('MAIL_ACCESS_KEY_SECRET'),
+      accessKeyID: required('ACCESS_KEY_ID'), accessKeySecret: required('ACCESS_KEY_SECRET'),
       securityToken: env.MAIL_SECURITY_TOKEN },
   };
 }

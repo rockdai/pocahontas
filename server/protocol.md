@@ -27,7 +27,7 @@
 
 ## 登录令牌与退出
 
-首期仅使用服务端签发的 HS256 JWT，通过 `Authorization: Bearer` 传递。采用标准三段 JWS compact 格式：`base64url(header).base64url(payload).base64url(HMAC-SHA256(signingKey,前两段及中间的点))`；二进制编码不带填充。header 固定为 `{"alg":"HS256","typ":"JWT"}`，签发和验证均使用该固定 header 的编码，不根据请求选择算法或密钥，也不接受其他 header 字段。Node 使用原生 `createHmac` 与 `timingSafeEqual`；按 [RFC 7518 §3.2](https://www.rfc-editor.org/rfc/rfc7518.html#section-3.2) 和 [RFC 8725](https://www.rfc-editor.org/rfc/rfc8725.html) 固定算法、检查签名及受众。
+首期仅使用服务端签发的 HS256 JWT，通过 `Authorization: Bearer` 传递。采用标准三段 JWS compact 格式：`base64url(header).base64url(payload).base64url(HMAC-SHA256(secretKey,前两段及中间的点))`；二进制编码不带填充。header 固定为 `{"alg":"HS256","typ":"JWT"}`，签发和验证均使用该固定 header 的编码，不根据请求选择算法或密钥，也不接受其他 header 字段。Node 使用原生 `createHmac` 与 `timingSafeEqual`；按 [RFC 7518 §3.2](https://www.rfc-editor.org/rfc/rfc7518.html#section-3.2) 和 [RFC 8725](https://www.rfc-editor.org/rfc/rfc8725.html) 固定算法、检查签名及受众。
 
 payload 仅包含：
 
@@ -40,7 +40,7 @@ payload 仅包含：
 | iat | 服务端签发时的整数 Unix 秒。 |
 | exp | iat + 2,592,000 秒，即 30 天；响应 expiresAt 由此换算。 |
 
-签名密钥为部署配置提供的独立随机 32 字节秘密，所有同环境 FC 实例共用，不与验证码 HMAC 密钥复用，不下发客户端、不写数据库。测试/生产使用不同密钥；配置缺失拒绝启动，不临时随机生成。整体更换密钥会使旧令牌失效，首期不设计密钥历史表或轮换服务。令牌仅认证、不加密，不能放邮箱、密码材料、密钥或 SSH 信息。
+服务端统一使用部署配置 `SECRET_KEY` 提供的随机 32 字节秘密，编码为无填充的 Base64URL。登录令牌、验证码、限流标识及未知账号预登录 salt 的 HMAC 直接使用同一密钥；验证码等输入保留各自的用途标识，JWT 使用标准 JWS 签名输入。所有同环境 FC 实例共用该值，不下发客户端、不写数据库。测试/生产使用不同密钥；配置缺失拒绝启动，不临时随机生成。整体更换密钥会使旧令牌及未使用验证码失效，并重置限流标识，首期不设计密钥历史表或轮换服务。此密钥不参与客户端 SSH 资料加解密。令牌仅认证、不加密，不能放邮箱、密码材料、密钥或 SSH 信息。
 
 验证顺序固定：限制令牌最多 4 KiB、恰好三段且为规范 Base64URL；检查固定 header 与 32 字节签名，以恒定时间比较 HMAC；再解析 payload，校验字段和类型、iss/aud、UUID、合法的毫秒时间字符串，以及安全整数 iat/exp。要求 exp = iat + 2,592,000 且当前时间严格小于 exp；iat 最多允许比服务端当前时间快 60 秒。随后按 sub 查询用户，要求存在、未软删除、password_updated_at 非空且与令牌相等。校验失败统一 401；用户状态读取失败返回 503，不跳过查询。请求体中的 userId 不能覆盖 sub。
 

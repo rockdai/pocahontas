@@ -3,11 +3,11 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { codeHash, createCrypto, digest, equal, ITERATIONS } from './crypto.js';
 import { binary, email, encryptedInput, fail, iso, MAX_CIPHERTEXT, nextTime, object, timestamp, uuid } from './validation.js';
 
-export function createService({ store, signingKey, verificationKey, mailer, now = Date.now,
+export function createService({ store, secretKey, mailer, now = Date.now,
   logger = () => {}, issuanceDelay = 3200, maxKDF = 4 }) {
-  const crypto = createCrypto({ signingKey, verificationKey, maxKDF });
+  const crypto = createCrypto({ secretKey, maxKDF });
   async function hit(parts, limit, expires, time = now()) {
-    const row = await store.hit(digest(verificationKey, JSON.stringify(parts)), new Date(time), new Date(expires));
+    const row = await store.hit(digest(secretKey, JSON.stringify(parts)), new Date(time), new Date(expires));
     if (!row) fail(503, 'unavailable');
     if (row.hit_count > limit) fail(429, 'rate_limited');
   }
@@ -42,7 +42,7 @@ export function createService({ store, signingKey, verificationKey, mailer, now 
       if (!user || Boolean(user.password_updated_at) !== reset) return { codeId: id };
       const code = String(randomInt(100000000)).padStart(8, '0');
       const created = now();
-      await store.addCode(id, user.id, codeHash(verificationKey, id, user.id, code),
+      await store.addCode(id, user.id, codeHash(secretKey, id, user.id, code),
         new Date(created), new Date(created + 300000));
       try { await mailer.sendCode(address, code); }
       catch { logger({ event: 'mail_failed', codeId: id }); }
@@ -63,7 +63,7 @@ export function createService({ store, signingKey, verificationKey, mailer, now 
       fail(400, 'invalid_code');
     await limit('verify-email', user.email, 30);
     await hit(['verification-attempt', id], 5, new Date(code.expires_at).getTime(), time);
-    if (!equal(code.hash, codeHash(verificationKey, id, user.id, body.code))) fail(400, 'invalid_code');
+    if (!equal(code.hash, codeHash(secretKey, id, user.id, body.code))) fail(400, 'invalid_code');
     const passwordHash = await crypto.passwordHash(input.loginSecret);
     if (!await store.consume(id, user.id, new Date(now()))) fail(400, 'invalid_code');
     const changed = nextTime(user.password_updated_at ?? user.created_at, now());

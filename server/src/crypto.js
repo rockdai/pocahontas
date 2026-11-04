@@ -12,7 +12,7 @@ export const equal = (a, b) => Buffer.isBuffer(a) && Buffer.isBuffer(b)
 export const codeHash = (key, id, userID, code) => digest(key,
   JSON.stringify(['verification-code/v1', id, userID, code]));
 
-export function createCrypto({ signingKey, verificationKey, maxKDF = 4 }) {
+export function createCrypto({ secretKey, maxKDF = 4 }) {
   let running = 0;
   async function hash(secret, salt) {
     if (running >= maxKDF) fail(503, 'busy');
@@ -38,13 +38,13 @@ export function createCrypto({ signingKey, verificationKey, maxKDF = 4 }) {
       const result = await hash(secret, salt);
       return equal(result, expected) && valid;
     },
-    fakeSalt(email) { return digest(verificationKey, JSON.stringify(['prelogin/v1', email])); },
+    fakeSalt(email) { return digest(secretKey, JSON.stringify(['prelogin/v1', email])); },
     sign(user, now) {
       const iat = Math.floor(now / 1000);
       const payload = { iss: 'pocahontas-server', aud: 'pocahontas-api', sub: user.id,
         passwordUpdatedAt: iso(user.password_updated_at), iat, exp: iat + TTL };
       const input = `${HEADER}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}`;
-      return { token: `${input}.${digest(signingKey, input).toString('base64url')}`,
+      return { token: `${input}.${digest(secretKey, input).toString('base64url')}`,
         expiresAt: new Date(payload.exp * 1000).toISOString() };
     },
     verify(token, now) {
@@ -53,7 +53,7 @@ export function createCrypto({ signingKey, verificationKey, maxKDF = 4 }) {
         const parts = token.split('.');
         if (parts.length !== 3 || parts[0] !== HEADER) throw new Error();
         const payloadBytes = binary(parts[1], 1, 3072);
-        if (!equal(binary(parts[2], 32), digest(signingKey, parts.slice(0, 2).join('.')))) throw new Error();
+        if (!equal(binary(parts[2], 32), digest(secretKey, parts.slice(0, 2).join('.')))) throw new Error();
         const payload = object(JSON.parse(payloadBytes.toString('utf8')),
           ['iss', 'aud', 'sub', 'passwordUpdatedAt', 'iat', 'exp']);
         uuid(payload.sub);
