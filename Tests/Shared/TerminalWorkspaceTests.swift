@@ -9,6 +9,8 @@ import XCTest
 
 @MainActor
 final class TerminalWorkspaceTests: XCTestCase {
+  private var isConnectionAuthorized = true
+
   func testParallelSSHRetainsOutputAndSurvivesClosingOtherSession() async throws {
     guard let port = ProcessInfo.processInfo.environment["POCAHONTAS_SESSION_TEST_PORT"] else {
       throw XCTSkip("Run session-screenshots with the loopback fixture for SSH integration tests")
@@ -108,10 +110,9 @@ final class TerminalWorkspaceTests: XCTestCase {
     }
     let workspace = TerminalWorkspace()
     defer { workspace.closeAll() }
-    var authorized = true
     let first = workspace.open(
       host: "127.0.0.1", port: port, username: "fixture",
-      authentication: .password("pocahontas-test"), stillAuthorized: { authorized })
+      authentication: .password("pocahontas-test"), stillAuthorized: { self.isConnectionAuthorized })
     try await ready(first)
     let second = workspace.open(
       host: "127.0.0.1", port: port, username: "fixture",
@@ -128,7 +129,7 @@ final class TerminalWorkspaceTests: XCTestCase {
     XCTAssertNotEqual(first.state, .ready)
     second.surface.sendPaste("AFTER_RECONNECT")
     try await eventually { second.surface.textForTesting.contains("AFTER_RECONNECT") }
-    authorized = false
+    isConnectionAuthorized = false
     workspace.select(first.id)
     try await eventually { !first.canReconnect }
     XCTAssertFalse(first.surface.hasLiveSurface)

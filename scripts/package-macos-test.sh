@@ -14,11 +14,14 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 scripts/generate-project.sh
+BUILD_SETTINGS=(ARCHS=arm64 ONLY_ACTIVE_ARCH=YES)
+if [[ -n "${POCAHONTAS_SERVER_URL+x}" ]]; then
+  BUILD_SETTINGS+=("POCAHONTAS_SERVER_URL=$POCAHONTAS_SERVER_URL")
+fi
 xcodebuild -project pocahontas.xcodeproj -scheme pocahontas-macOS \
   -configuration Debug -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_PATH" -disableAutomaticPackageResolution \
-  "POCAHONTAS_SERVER_URL=${POCAHONTAS_SERVER_URL:-}" \
-  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build > "$OUTPUT_DIR/build.log" 2>&1
+  "${BUILD_SETTINGS[@]}" build > "$OUTPUT_DIR/build.log" 2>&1
 APP="$DERIVED_DATA_PATH/Build/Products/Debug/Pocahontas.app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$APP/Contents/Info.plist")" == Pocahontas ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")" == Pocahontas ]]
@@ -28,9 +31,13 @@ codesign --verify --deep --strict "$APP"
 ditto "$APP" "$STAGING/Pocahontas/Pocahontas.app"
 python3 - "$STAGING/Pocahontas" "$SOURCE_COMMIT" "$ROOT" "$DERIVED_DATA_PATH" <<'PY'
 from pathlib import Path
-import os, re, shutil, sys
+import os, plistlib, re, shutil, sys
 stage, source = Path(sys.argv[1]), sys.argv[2]
 root, derived = Path(sys.argv[3]), Path(sys.argv[4])
+app_info = plistlib.loads((derived / 'Build/Products/Debug/Pocahontas.app/Contents/Info.plist').read_bytes())
+server_url = app_info.get('PocahontasServerURL', '')
+account_instructions = (f'账号服务：{server_url}。可在 Saved Connections → Account & Sync 注册与登录。'
+                        if server_url else '此包未配置账号服务，使用本地模式。')
 # Carry the existing notices and the licenses shipped with the linked source trees.
 for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'Licenses', 'assets/logo/fonts/OFL.txt', 'Packages/PocahontasKit/Package.resolved', 'Frameworks/build-info.json']:
     original, destination = root / name, stage / name
@@ -64,8 +71,7 @@ Intel Mac 不能使用此安装包；最低系统版本仍需实机验收。
 4. ＋ / ⌘T 新建会话，⌃Tab / ⌃⇧Tab 切换，标签 × 单独关闭，⌘N 新窗口。
 
 支持 SSH、多会话、本地连接配置、本机 Keychain 凭据保存与服务器指纹信任。
-账号同步需要打包时配置 Pocahontas server 地址；未配置时使用本地模式。
-已配置的测试包可在 Saved Connections → Account & Sync 注册与登录。
+{account_instructions}
 远端持续任务请使用 tmux。
 本包不包含构建机器的已保存连接、密码、私钥或用户数据。
 
