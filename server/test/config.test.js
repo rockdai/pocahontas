@@ -5,8 +5,7 @@ import { configFromEnv } from '../src/config.js';
 import { createMailer, signMail } from '../src/mail.js';
 
 const environment = () => ({ DATABASE_URL: 'postgres://fixture:fixture@localhost/fixture',
-  DATABASE_TLS: 'false', SIGNING_KEY: Buffer.alloc(32, 1).toString('base64url'),
-  VERIFICATION_KEY: Buffer.alloc(32, 2).toString('base64url'),
+  DATABASE_TLS: 'false', SECRET_KEY: Buffer.alloc(32, 1).toString('base64url'),
   MAIL_SENDER: 'test@example.com', ACCESS_KEY_ID: 'public-test-id', ACCESS_KEY_SECRET: 'public-test-secret' });
 
 test('deployment requires both AccessKey credentials', () => {
@@ -17,10 +16,20 @@ test('deployment requires both AccessKey credentials', () => {
   }
 });
 
-test('deployment rejects shared keys and remote unverified database TLS', () => {
+test('deployment accepts one shared secret and rejects missing or malformed keys', () => {
+  const env = environment();
+  assert.deepEqual(configFromEnv(env).secretKey, Buffer.from(env.SECRET_KEY, 'base64url'));
+  for (const value of [undefined, '', ' ', 'invalid!', env.SECRET_KEY + '=',
+    env.SECRET_KEY.slice(0, -1) + 'F',
+    Buffer.alloc(31).toString('base64url'), Buffer.alloc(33).toString('base64url')]) {
+    assert.throws(() => configFromEnv({ ...env, SECRET_KEY: value }),
+      { message: 'SECRET_KEY must be 32 bytes in canonical Base64URL' });
+  }
+});
+
+test('deployment rejects remote unverified database TLS', () => {
   const env = environment();
   assert.equal(configFromEnv(env).pool.max, 2);
-  assert.throws(() => configFromEnv({ ...env, VERIFICATION_KEY: env.SIGNING_KEY }));
   assert.throws(() => configFromEnv({ ...env, DATABASE_URL: 'postgres://fixture@db.example.com/fixture' }));
   assert.throws(() => configFromEnv({ ...env, DATABASE_URL: env.DATABASE_URL + '?sslmode=disable' }));
   assert.throws(() => configFromEnv({ ...env, MAIL_ENDPOINT: 'http://mail.example.com' }));

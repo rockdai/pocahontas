@@ -76,7 +76,7 @@ iCloud 路线取消，旧数据不迁移，不兼容未发布的旧版本。SSH 
 
 `verification` 通过 user_id 在应用层关联 app_user，邮箱从用户读取，不加外键。注册只允许 app_user.password_updated_at 为 NULL 的待验证用户；重置只允许已注册用户，要求 code.created_at > user.password_updated_at，并明确确认清空资料。复用已有创建时间即可拒绝最近一次注册/改密码之前的码，不保存密码时间快照、用途或额外上下文。最终用户 UPDATE 仍检查本次校验时读取的密码变更时间，避免并发覆盖。详细接口见 [protocol.md](protocol.md#邮箱验证码与中断)。
 
-登录使用固定 HS256 签名的 JWT，有效期 30 天；只包含用户 ID、密码变更时间、签发/到期时间和固定签发者、受众。不保存设备、令牌摘要、会话记录或黑名单，也不引入 refresh token。多端可以同时持有有效令牌，到期后重新登录，普通访问不续期。签名使用 Node 原生 crypto 和部署配置中的独立随机密钥，不增加运行时依赖。
+登录使用固定 HS256 签名的 JWT，有效期 30 天；只包含用户 ID、密码变更时间、签发/到期时间和固定签发者、受众。不保存设备、令牌摘要、会话记录或黑名单，也不引入 refresh token。多端可以同时持有有效令牌，到期后重新登录，普通访问不续期。签名使用 Node 原生 crypto 和部署配置中的 `SECRET_KEY`，与验证码及限流标识的 HMAC 共用，不增加运行时依赖。
 
 每个受保护 API 先校验签名、类型、签发者、受众及有效期，再查询 app_user，要求用户存在、未软删除、已完成注册，且 password_updated_at 与令牌一致。这里省去的是登录记录，仍需查询用户状态。具体格式与校验规则见 [登录令牌](protocol.md#登录令牌与退出)。修改或重置密码使所有旧令牌失效，注销删除用户后所有令牌失效；已通过校验的在途请求仍可能完成，条件写入仍须校验原密码变更时间。
 
@@ -96,7 +96,7 @@ PostgreSQL 与 FC 使用同地域 VPC，连接验证 TLS；连接凭据通过部
 
 ### 本地运行与测试
 
-需要 Node.js 20+、PostgreSQL。先创建独立空数据库并执行 `schema.sql`，不运行旧数据迁移。配置参见 [.env.example](.env.example)，将本机真实值放在未跟踪的 `server/.env` 中；两个服务端密钥分别用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"` 生成。不要将生成结果提交到 Git。
+需要 Node.js 20+、PostgreSQL。先创建独立空数据库并执行 `schema.sql`，不运行旧数据迁移。配置参见 [.env.example](.env.example)，将本机真实值放在未跟踪的 `server/.env` 中；服务端密钥 `SECRET_KEY` 用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"` 生成。不要将生成结果提交到 Git。
 
 ```sh
 npm ci --prefix server
@@ -125,10 +125,31 @@ scripts/package-server.sh
 输出 `.build/pocahontas-server.zip`，仅含运行代码、锁定依赖和入口；不含测试、`.env` 或数据库初始化脚本。按 [FC Node.js ES modules 说明](https://www.alibabacloud.com/help/en/functioncompute/node-js/)和 [HTTP 事件格式](https://help.aliyun.com/en/functioncompute/http-trigger-invoking-function)部署：
 
 1. 新建 Node.js 20 函数，上传 ZIP，执行入口 `fc.handler`；HTTP 触发器允许 GET、POST、PUT、DELETE，通过 HTTPS 域名对外访问，业务鉴权由 Bearer token 完成。使用 v1 JSON HTTP 事件，来源地址取平台的 `requestContext.http.sourceIp`，不信任调用者提供的转发头。
-2. 配置环境变量 `DATABASE_URL`、`SIGNING_KEY`、`VERIFICATION_KEY`、`MAIL_SENDER`、`ACCESS_KEY_ID`、`ACCESS_KEY_SECRET`。邮件账号仅授予发送权限，可附加 `MAIL_SECURITY_TOKEN`；地域和 API 地址可由 `MAIL_REGION` / `MAIL_ENDPOINT` 指定。凭据放在部署配置，不放代码包。
+2. 配置下表中的环境变量。凭据放在部署配置，不放代码包。
 3. FC 与数据库使用同地域 VPC；保留访问 DirectMail HTTPS 的网络通路。初始函数内存 512 MiB、超时 30 秒、单实例并发 4；每实例最多 2 个数据库连接。依据数据库连接预算限制最大实例数，给管理与清理连接留余量，压测后再调整。
 4. 用同一代码包另建定时函数，入口 `fc.cleanup`，每 15 分钟调用一次，无 HTTP 触发器；删除到期验证码、限流记录和超过 24 小时的未注册用户。保留正在有效期内的计数。
 5. 初始化空库后检查健康、真实邮件注册、两台设备同步、改密和重置。默认不记录请求体、授权头、邮件正文或返回密文；不要在平台诊断配置中开启这些内容的采集。
+
+必填环境变量，API 函数和定时清理函数使用同一组配置：
+
+| 变量 | 填写内容 |
+| --- | --- |
+| `DATABASE_URL` | `postgres://用户名:密码@数据库内网地址:5432/pocahontas`；用户名、密码中的特殊字符需做 URL 编码，不附加查询参数。 |
+| `SECRET_KEY` | 随机 32 字节的 Base64URL 编码，无填充；用上面的 Node 命令生成一次，同环境所有实例共用。 |
+| `MAIL_SENDER` | DirectMail 中已配置可用的发信地址，例如 `verify@example.com`。 |
+| `ACCESS_KEY_ID` | 具有邮件发送权限的阿里云 RAM AccessKey ID。 |
+| `ACCESS_KEY_SECRET` | 对应的 AccessKey Secret。 |
+
+以下变量按需配置：
+
+| 变量 | 默认值 / 配置条件 |
+| --- | --- |
+| `MAIL_REGION` | 默认 `cn-hangzhou`；使用其他邮件地域时修改。 |
+| `MAIL_ENDPOINT` | 默认 `https://dm.aliyuncs.com/`；使用其他邮件地域时填写对应 API 地址。 |
+| `MAIL_SECURITY_TOKEN` | 使用 STS 临时凭据时填写配套 Token；长期 AccessKey 不填。 |
+| `DATABASE_CA_FILE` | 仅数据库 CA 未被 Node.js 信任时填写部署包内可读的 CA 文件路径。 |
+
+当前 `fc.handler` / `fc.cleanup` 入口不需要 `HOST` 或 `PORT`；FC 连接远程数据库时不配置 `DATABASE_TLS=false`。旧的两个服务端密钥配置已由 `SECRET_KEY` 替代；更换该值会使旧登录令牌和未使用验证码失效，并重置限流标识。它不参与客户端 SSH 资料的加解密。
 
 目前未创建云资源。上线仍需确定地域、VPC / PostgreSQL 连接、发信地址、HTTPS 域名和实例预算。
 

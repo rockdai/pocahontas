@@ -1,7 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createDecipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { database, fixture, client } from './helpers.js';
 import { fcHandler, httpHandler } from '../src/app.js';
@@ -20,6 +20,8 @@ test('pending users cannot login; code HMAC is stored without plaintext; double 
   const code = f.messages.at(-1).code;
   const stored = await f.store.code(issued.data.codeId);
   assert.equal(stored.hash.length, 32);
+  assert.deepEqual(stored.hash, createHmac('sha256', f.secretKey)
+    .update(JSON.stringify(['verification-code/v1', issued.data.codeId, stored.user_id, code])).digest());
   assert.equal((await post('login', { email, loginSecret: keys.loginSecret })).statusCode, 401);
   assert.equal((await f.store.byEmail(email)).password_hash, null);
   const fake = (await post('prelogin', { email })).data;
@@ -137,10 +139,12 @@ test('JWT rejects tampering, wrong audience, expiry and deletion, without disclo
   const user = await f.register('jwt@example.test');
   assert.equal((await f.request('GET', '/v1/me', undefined, user.token + 'x')).statusCode, 401);
   const parts = user.token.split('.');
+  assert.equal(parts[2], createHmac('sha256', f.secretKey)
+    .update(parts.slice(0, 2).join('.')).digest('base64url'));
   const payload = JSON.parse(Buffer.from(parts[1], 'base64url'));
   payload.aud = 'another-service';
   parts[1] = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  parts[2] = digest(f.signingKey, parts.slice(0, 2).join('.')).toString('base64url');
+  parts[2] = digest(f.secretKey, parts.slice(0, 2).join('.')).toString('base64url');
   assert.equal((await f.request('GET', '/v1/me', undefined, parts.join('.'))).statusCode, 401);
   const crypto = createCrypto(f);
   assert.throws(() => crypto.verify(user.token, f.now() + 31 * 86400000));

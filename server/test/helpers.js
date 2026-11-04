@@ -47,11 +47,11 @@ export function client(password = 'Pocahontas test password 2026', records = [],
 }
 
 export function fixture(pool, options = {}) {
-  const signingKey = Buffer.alloc(32, 1), verificationKey = Buffer.alloc(32, 2);
+  const secretKey = Buffer.alloc(32, 1);
   const messages = [], logs = [];
   let time = Date.now();
   const store = new Store(pool);
-  const service = createService({ store, signingKey, verificationKey, now: () => time,
+  const service = createService({ store, secretKey, now: () => time,
     issuanceDelay: 0, logger: event => logs.push(event),
     mailer: { async sendCode(email, code) { messages.push({ email, code }); } }, ...options });
   const app = createApp(service, event => logs.push(event));
@@ -72,6 +72,6 @@ export function fixture(pool, options = {}) {
     const login = await request('POST', '/v1/auth/login', { email, loginSecret: keys.loginSecret });
     return { ...keys, ...login.data, email };
   }
-  return { app, service, store, request, register, messages, logs, signingKey, verificationKey,
+  return { app, service, store, request, register, messages, logs, secretKey,
     tick: (milliseconds = 10) => time += milliseconds, now: () => time };
 }
