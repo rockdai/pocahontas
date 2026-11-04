@@ -1,5 +1,0 @@
-self-hosted-runner:
-  labels:
-    - pocahontas
-    - pocahontas-macmini-2026
-    - pocahontas-macmini-2024
