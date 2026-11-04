@@ -37,7 +37,3 @@
 - 分支合并到远程 main 后，本地也要删除该分支并切回 main。
 - 新任务开新分支，分支名称要有意义（如 feat/upload-progress、fix/auth-token-refresh）。
 - 对现有未合并分支的优化不要新开分支，继续在原分支上工作。
-- 本仓库公开代码，但不接受外部 pull request 或外部贡献者的提交；仅维护者和获授权的仓库协作者可以贡献。不得合并、代为提交或 cherry-pick 外部贡献。
-- GitHub 的 Pull requests 创建策略保持 Collaborators only，外部 fork 的 Actions 保持全部需要审批；不得批准外部贡献在自托管 runner 上执行。
-- 自托管 runner 仅运行本仓库 main 的 push 或手动构建；不得通过 PR、PR 评论、pull_request_target、外部 artifact 或用户传入的 ref 执行代码。新增工作流也必须遵守。
-- rock-mbp 仅用于必要的 GitHub 管理操作，不承担 runner、构建或测试任务。
