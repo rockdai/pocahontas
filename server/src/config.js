@@ -1,11 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { binary } from './validation.js';
 
-export function httpOptionsFromEnv(env = process.env) {
-  return { host: env.HOST ?? (env.FC_FUNCTION_NAME ? '0.0.0.0' : '127.0.0.1'),
-    port: Number(env.PORT ?? env.FC_CUSTOM_LISTEN_PORT ?? 9000) };
-}
-
 export function configFromEnv(env = process.env) {
   function required(name) {
     if (!env[name]) throw new Error(`Missing ${name}`);

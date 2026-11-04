@@ -106,7 +106,7 @@ cd server
 node --env-file=.env src/main.js
 ```
 
-`GET /healthz` 只检查进程存活，不查询数据库。本地默认监听 `127.0.0.1:9000`；检测到 FC 注入的 `FC_FUNCTION_NAME` 时默认监听 `0.0.0.0`，端口读取 `FC_CUSTOM_LISTEN_PORT`，未提供时使用 `9000`。显式设置的 `HOST` / `PORT` 优先。只有 loopback PostgreSQL 可设置 `DATABASE_TLS=false`，远程连接始终验证证书。`DATABASE_CA_FILE` 为可选项：默认使用 Node.js 的受信任 CA，只有数据库证书所用 CA 未被信任时才需指定 CA 文件。禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
+`GET /healthz` 只检查进程存活，不查询数据库。监听地址由 `HOST` 指定，未设置时使用 `0.0.0.0`；端口由 `PORT` 指定，未设置时使用 `9000`。只有 loopback PostgreSQL 可设置 `DATABASE_TLS=false`，远程连接始终验证证书。`DATABASE_CA_FILE` 为可选项：默认使用 Node.js 的受信任 CA，只有数据库证书所用 CA 未被信任时才需指定 CA 文件。禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
 
 ```sh
 npm test --prefix server
@@ -124,7 +124,7 @@ scripts/package-server.sh
 
 输出 `.build/pocahontas-server.zip`，仅含运行代码、锁定依赖和入口；不含测试、`.env` 或数据库初始化脚本。当前 API 使用 [FC 自定义运行时](https://help.aliyun.com/zh/functioncompute/custom-runtime/)部署：
 
-1. 已创建的 `pocahontas-server` 使用 `custom.debian12`，启动命令为 `npm run start`，平台监听端口为 `9000`。代码自动使用 FC 的监听地址和端口，不需要额外设置 `HOST` / `PORT`。域名为 `https://pocahontas-api.rockdai.com`，健康接口为 `/healthz`。HTTP 触发器允许 GET、POST、PUT、DELETE，业务鉴权由 Bearer token 完成。代码包仍保留 `fc.handler`，供内置 Node.js 运行时的 v1 HTTP 事件使用。
+1. 已创建的 `pocahontas-server` 使用 `custom.debian12`，启动命令为 `npm run start`，平台监听端口为 `9000`。代码默认监听 `0.0.0.0:9000`，不需要额外设置 `HOST` / `PORT`。域名为 `https://pocahontas-api.rockdai.com`，健康接口为 `/healthz`。HTTP 触发器允许 GET、POST、PUT、DELETE，业务鉴权由 Bearer token 完成。代码包仍保留 `fc.handler`，供内置 Node.js 运行时的 v1 HTTP 事件使用。
 2. 配置下表中的环境变量。凭据放在部署配置，不放代码包。
 3. FC 与数据库使用同地域 VPC；保留访问 DirectMail HTTPS 的网络通路。初始函数内存 512 MiB、超时 30 秒、单实例并发 4；每实例最多 2 个数据库连接。依据数据库连接预算限制最大实例数，给管理与清理连接留余量，压测后再调整。
 4. 用同一代码包另建定时函数，入口 `fc.cleanup`，每 15 分钟调用一次，无 HTTP 触发器；删除到期验证码、限流记录和超过 24 小时的未注册用户。保留正在有效期内的计数。
@@ -149,7 +149,7 @@ scripts/package-server.sh
 | `MAIL_SECURITY_TOKEN` | 使用 STS 临时凭据时填写配套 Token；长期 AccessKey 不填。 |
 | `DATABASE_CA_FILE` | 仅数据库 CA 未被 Node.js 信任时填写部署包内可读的 CA 文件路径。 |
 
-当前 API 的 `npm run start` 会读取 FC 自动注入的监听配置；`fc.handler` / `fc.cleanup` 事件入口也不需要 `HOST` 或 `PORT`。FC 连接远程数据库时不配置 `DATABASE_TLS=false`。旧的两个服务端密钥配置已由 `SECRET_KEY` 替代；更换该值会使旧登录令牌和未使用验证码失效，并重置限流标识。它不参与客户端 SSH 资料的加解密。
+当前 API 的 `npm run start` 使用上述默认监听地址和端口；`fc.handler` / `fc.cleanup` 事件入口不使用 `HOST` 或 `PORT`。FC 连接远程数据库时不配置 `DATABASE_TLS=false`。旧的两个服务端密钥配置已由 `SECRET_KEY` 替代；更换该值会使旧登录令牌和未使用验证码失效，并重置限流标识。它不参与客户端 SSH 资料的加解密。
 
 ### GitHub Actions 自动部署
 

@@ -1,21 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { configFromEnv, httpOptionsFromEnv } from '../src/config.js';
+import { configFromEnv } from '../src/config.js';
 import { createMailer, signMail } from '../src/mail.js';
 
 const environment = () => ({ DATABASE_URL: 'postgres://fixture:fixture@localhost/fixture',
   DATABASE_TLS: 'false', SECRET_KEY: Buffer.alloc(32, 1).toString('base64url'),
   MAIL_SENDER: 'test@example.com', ACCESS_KEY_ID: 'public-test-id', ACCESS_KEY_SECRET: 'public-test-secret' });
-
-test('HTTP listener uses FC address and port while preserving local defaults and explicit overrides', () => {
-  assert.deepEqual(httpOptionsFromEnv({}), { host: '127.0.0.1', port: 9000 });
-  const fc = { FC_FUNCTION_NAME: 'pocahontas-server' };
-  assert.deepEqual(httpOptionsFromEnv(fc), { host: '0.0.0.0', port: 9000 });
-  assert.deepEqual(httpOptionsFromEnv({ ...fc, FC_CUSTOM_LISTEN_PORT: '9100' }), { host: '0.0.0.0', port: 9100 });
-  assert.deepEqual(httpOptionsFromEnv({ ...fc, FC_CUSTOM_LISTEN_PORT: '9100', HOST: '127.0.0.1', PORT: '0' }),
-    { host: '127.0.0.1', port: 0 });
-});
 
 test('deployment requires both AccessKey credentials', () => {
   for (const name of ['ACCESS_KEY_ID', 'ACCESS_KEY_SECRET']) {

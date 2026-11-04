@@ -6,7 +6,6 @@ import { once } from 'node:events';
 import { database, fixture, client } from './helpers.js';
 import { fcHandler, httpHandler } from '../src/app.js';
 import { createCrypto, digest } from '../src/crypto.js';
-import { httpOptionsFromEnv } from '../src/config.js';
 
 let db, f;
 before(async () => { db = await database(); f = fixture(db.pool); });
@@ -193,20 +192,4 @@ test('HTTP and FC adapters enforce input size, JSON, header normalization and so
     assert.equal(result.statusCode, 200);
     assert.equal(JSON.parse(result.body).iterations, 600000);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
-});
-
-test('FC HTTP listener accepts health checks on all IPv4 interfaces and rejects invalid ports', async () => {
-  const fc = { FC_FUNCTION_NAME: 'pocahontas-server', FC_CUSTOM_LISTEN_PORT: '0' };
-  const server = createServer(httpHandler(f.app)).listen(httpOptionsFromEnv(fc));
-  await once(server, 'listening');
-  try {
-    assert.equal(server.address().address, '0.0.0.0');
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/healthz`);
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { ok: true });
-  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
-  for (const port of ['invalid', '-1', '65536']) {
-    assert.throws(() => createServer().listen(httpOptionsFromEnv({ ...fc, FC_CUSTOM_LISTEN_PORT: port })),
-      { code: 'ERR_SOCKET_BAD_PORT' });
-  }
 });
