@@ -7,7 +7,15 @@ import { createMailer, signMail } from '../src/mail.js';
 const environment = () => ({ DATABASE_URL: 'postgres://fixture:fixture@localhost/fixture',
   DATABASE_TLS: 'false', SIGNING_KEY: Buffer.alloc(32, 1).toString('base64url'),
   VERIFICATION_KEY: Buffer.alloc(32, 2).toString('base64url'),
-  MAIL_SENDER: 'test@example.com', MAIL_ACCESS_KEY_ID: 'public-test-id', MAIL_ACCESS_KEY_SECRET: 'public-test-secret' });
+  MAIL_SENDER: 'test@example.com', ACCESS_KEY_ID: 'public-test-id', ACCESS_KEY_SECRET: 'public-test-secret' });
+
+test('deployment requires both AccessKey credentials', () => {
+  for (const name of ['ACCESS_KEY_ID', 'ACCESS_KEY_SECRET']) {
+    for (const value of [undefined, '']) {
+      assert.throws(() => configFromEnv({ ...environment(), [name]: value }), { message: `Missing ${name}` });
+    }
+  }
+});
 
 test('deployment rejects shared keys and remote unverified database TLS', () => {
   const env = environment();
@@ -16,7 +24,8 @@ test('deployment rejects shared keys and remote unverified database TLS', () => 
   assert.throws(() => configFromEnv({ ...env, DATABASE_URL: 'postgres://fixture@db.example.com/fixture' }));
   assert.throws(() => configFromEnv({ ...env, DATABASE_URL: env.DATABASE_URL + '?sslmode=disable' }));
   assert.throws(() => configFromEnv({ ...env, MAIL_ENDPOINT: 'http://mail.example.com' }));
-  assert.equal(configFromEnv({ ...env, DATABASE_TLS: undefined }).pool.ssl.rejectUnauthorized, true);
+  assert.deepEqual(configFromEnv({ ...env, DATABASE_TLS: undefined,
+    DATABASE_URL: 'postgres://fixture@db.example.com/fixture' }).pool.ssl, { rejectUnauthorized: true });
 });
 
 test('DirectMail signs canonical encoded parameters and handles provider errors', async () => {
@@ -33,6 +42,11 @@ test('DirectMail signs canonical encoded parameters and handles provider errors'
   }).sendCode('person@example.com', '01234567');
   assert.equal(captured.url, 'https://dm.aliyuncs.com/');
   assert.equal(captured.request.redirect, 'error');
+  assert.equal(captured.fields.get('AccessKeyId'), environment().ACCESS_KEY_ID);
+  const signature = captured.fields.get('Signature');
+  captured.fields.delete('Signature');
+  const expectedRequest = new URLSearchParams(signMail(Object.fromEntries(captured.fields), environment().ACCESS_KEY_SECRET));
+  assert.equal(signature, expectedRequest.get('Signature'));
   assert.equal(captured.fields.get('ToAddress'), 'person@example.com');
   assert.ok(captured.fields.get('TextBody').includes('01234567'));
   await assert.rejects(createMailer(config, async () => ({ ok: true, json: async () => ({ Code: 'InvalidAddress' }) }))

@@ -106,7 +106,7 @@ cd server
 node --env-file=.env src/main.js
 ```
 
-`GET /healthz` 只检查进程存活，不查询数据库。默认监听 `127.0.0.1:9000`。只有 loopback PostgreSQL 可设置 `DATABASE_TLS=false`，远程连接始终验证证书；私有 CA 使用 `DATABASE_CA_FILE`，禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
+`GET /healthz` 只检查进程存活，不查询数据库。默认监听 `127.0.0.1:9000`。只有 loopback PostgreSQL 可设置 `DATABASE_TLS=false`，远程连接始终验证证书。`DATABASE_CA_FILE` 为可选项：默认使用 Node.js 的受信任 CA，只有数据库证书所用 CA 未被信任时才需指定 CA 文件。禁止 URL 中带覆盖 TLS 的参数。真实邮件须先配置 DirectMail 已验证发信域名和地址。
 
 ```sh
 npm test --prefix server
@@ -125,7 +125,7 @@ scripts/package-server.sh
 输出 `.build/pocahontas-server.zip`，仅含运行代码、锁定依赖和入口；不含测试、`.env` 或数据库初始化脚本。按 [FC Node.js ES modules 说明](https://www.alibabacloud.com/help/en/functioncompute/node-js/)和 [HTTP 事件格式](https://help.aliyun.com/en/functioncompute/http-trigger-invoking-function)部署：
 
 1. 新建 Node.js 20 函数，上传 ZIP，执行入口 `fc.handler`；HTTP 触发器允许 GET、POST、PUT、DELETE，通过 HTTPS 域名对外访问，业务鉴权由 Bearer token 完成。使用 v1 JSON HTTP 事件，来源地址取平台的 `requestContext.http.sourceIp`，不信任调用者提供的转发头。
-2. 配置环境变量 `DATABASE_URL`、`SIGNING_KEY`、`VERIFICATION_KEY`、`MAIL_SENDER`、`MAIL_ACCESS_KEY_ID`、`MAIL_ACCESS_KEY_SECRET`。邮件账号仅授予发送权限，可附加 `MAIL_SECURITY_TOKEN`；地域和 API 地址可由 `MAIL_REGION` / `MAIL_ENDPOINT` 指定。凭据放在部署配置，不放代码包。
+2. 配置环境变量 `DATABASE_URL`、`SIGNING_KEY`、`VERIFICATION_KEY`、`MAIL_SENDER`、`ACCESS_KEY_ID`、`ACCESS_KEY_SECRET`。邮件账号仅授予发送权限，可附加 `MAIL_SECURITY_TOKEN`；地域和 API 地址可由 `MAIL_REGION` / `MAIL_ENDPOINT` 指定。凭据放在部署配置，不放代码包。
 3. FC 与数据库使用同地域 VPC；保留访问 DirectMail HTTPS 的网络通路。初始函数内存 512 MiB、超时 30 秒、单实例并发 4；每实例最多 2 个数据库连接。依据数据库连接预算限制最大实例数，给管理与清理连接留余量，压测后再调整。
 4. 用同一代码包另建定时函数，入口 `fc.cleanup`，每 15 分钟调用一次，无 HTTP 触发器；删除到期验证码、限流记录和超过 24 小时的未注册用户。保留正在有效期内的计数。
 5. 初始化空库后检查健康、真实邮件注册、两台设备同步、改密和重置。默认不记录请求体、授权头、邮件正文或返回密文；不要在平台诊断配置中开启这些内容的采集。

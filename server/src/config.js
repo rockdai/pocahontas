@@ -25,7 +25,7 @@ export function configFromEnv(env = process.env) {
     pool: { connectionString: databaseURL, ssl, max: 2, connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 30000, statement_timeout: 5000, query_timeout: 6000 },
     mail: { endpoint: endpoint.href, region: env.MAIL_REGION ?? 'cn-hangzhou', sender: required('MAIL_SENDER'),
-      accessKeyID: required('MAIL_ACCESS_KEY_ID'), accessKeySecret: required('MAIL_ACCESS_KEY_SECRET'),
+      accessKeyID: required('ACCESS_KEY_ID'), accessKeySecret: required('ACCESS_KEY_SECRET'),
       securityToken: env.MAIL_SECURITY_TOKEN },
   };
 }
