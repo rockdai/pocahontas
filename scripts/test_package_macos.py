@@ -168,5 +168,106 @@ class NoticeTests(unittest.TestCase):
         self.assertIn("https://example.invalid", instructions)
 
 
+class GhosttyDependencyTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.cache = Path(directory.name)
+        self.libxev = "libxev-0.0.0-86vtc4IcEwCqEYxEYoN_3KXmc6A9VLcm22aVImfvecYs"
+        self.url = "https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz"
+        self.manifest = self.cache / "build.zig.zon"
+        self.manifest_text = ('.{\n    .dependencies = .{\n        .libxev = .{\n'
+                              '            // mitchellh/libxev\n'
+                              f'            .url = "{self.url}",\n'
+                              f'            .hash = "{self.libxev}",\n'
+                              '            .lazy = true,\n        },\n    },\n}\n')
+        self.manifest.write_text(self.manifest_text)
+        self.source = self.cache / "p" / self.libxev / "src/backend/kqueue.zig"
+        self.original = (".machport => if (comptime builtin.os.tag != .macos) return null else kevent\n"
+                         "if (comptime builtin.target.os.tag == .macos) {\n")
+        script = Path(__file__).with_name("build-ghostty.sh").read_text()
+        self.patch = script.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+
+    def patch_dependency(self):
+        with patch.object(sys, "argv", ["-", str(self.cache), "zig-test", str(self.manifest)]):
+            exec(compile(self.patch, "build-ghostty.sh", "exec"), {})
+
+    def fetch_libxev(self, args, text):
+        self.assertEqual(args, ["zig-test", "fetch",
+                               "https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz"])
+        self.source.parent.mkdir(parents=True, exist_ok=True)
+        self.source.write_text(self.original)
+        return self.libxev + "\n"
+
+    def test_empty_cache_fetches_only_pinned_libxev_before_patching(self):
+        with patch.object(subprocess, "check_output", side_effect=self.fetch_libxev) as fetch:
+            self.patch_dependency()
+        self.assertEqual(fetch.call_count, 1)
+        self.assertIn("!builtin.os.tag.isDarwin()", self.source.read_text())
+        self.assertIn("builtin.target.os.tag.isDarwin()", self.source.read_text())
+
+    def test_cached_dependency_is_patched_idempotently_without_network(self):
+        self.source.parent.mkdir(parents=True)
+        self.source.write_text(self.original)
+        with patch.object(subprocess, "check_output") as fetch:
+            self.patch_dependency()
+            first = self.source.read_bytes()
+            self.patch_dependency()
+        fetch.assert_not_called()
+        self.assertEqual(self.source.read_bytes(), first)
+
+    def test_wrong_dependency_hash_stops_before_patching(self):
+        with patch.object(subprocess, "check_output", return_value="unexpected-hash\n"):
+            with self.assertRaisesRegex(SystemExit, "Unexpected libxev hash"):
+                self.patch_dependency()
+        self.assertFalse(self.source.exists())
+
+    def test_download_failure_is_not_ignored(self):
+        with patch.object(subprocess, "check_output", side_effect=subprocess.CalledProcessError(1, "zig fetch")):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.patch_dependency()
+        self.assertFalse(self.source.exists())
+
+    def test_changed_dependency_source_is_not_blindly_patched(self):
+        self.source.parent.mkdir(parents=True)
+        self.source.write_text("unexpected source")
+        with patch.object(subprocess, "check_output") as fetch:
+            with self.assertRaisesRegex(SystemExit, "libxev patch no longer matches"):
+                self.patch_dependency()
+        fetch.assert_not_called()
+        self.assertEqual(self.source.read_text(), "unexpected source")
+
+    def test_manifest_pin_mismatch_stops_before_download_or_patch(self):
+        for value in (self.url, self.libxev):
+            for cached in (False, True):
+                with self.subTest(value=value, cached=cached):
+                    self.manifest.write_text(self.manifest_text.replace(value, "new-pin"))
+                    self.source.unlink(missing_ok=True)
+                    if cached:
+                        self.source.parent.mkdir(parents=True, exist_ok=True)
+                        self.source.write_text(self.original)
+                    with patch.object(subprocess, "check_output", side_effect=self.fetch_libxev) as fetch:
+                        with self.assertRaisesRegex(SystemExit, "Ghostty libxev pin changed"):
+                            self.patch_dependency()
+                    fetch.assert_not_called()
+                    if cached:
+                        self.assertEqual(self.source.read_text(), self.original)
+                    else:
+                        self.assertFalse(self.source.exists())
+
+    def test_missing_or_duplicate_manifest_entry_or_field_is_rejected(self):
+        for manifest in ('.{ .dependencies = .{} }',
+                         self.manifest_text.replace(f'            .hash = "{self.libxev}",\n', ''),
+                         self.manifest_text + self.manifest_text,
+                         self.manifest_text.replace(f'.url = "{self.url}",',
+                                                    f'.url = "{self.url}",\n            .url = "{self.url}",')):
+            with self.subTest(manifest=manifest):
+                self.manifest.write_text(manifest)
+                with patch.object(subprocess, "check_output") as fetch:
+                    with self.assertRaisesRegex(SystemExit, "Ghostty libxev pin changed"):
+                        self.patch_dependency()
+                fetch.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
