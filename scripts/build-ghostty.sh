@@ -13,13 +13,17 @@ if [[ -n "${ZIG_CACHE_SEED:-}" && ! -d "$ZIG_GLOBAL_CACHE_DIR/p" ]]; then
   cp -R "$ZIG_CACHE_SEED/p" "$ZIG_GLOBAL_CACHE_DIR/p"
 fi
 cd "$ENGINE"
-python3 - "$ZIG_GLOBAL_CACHE_DIR" "$ZIG" <<'PY'
+python3 - "$ZIG_GLOBAL_CACHE_DIR" "$ZIG" "$ENGINE/build.zig.zon" <<'PY'
 from pathlib import Path
-import subprocess, sys
+import re, subprocess, sys
 libxev = 'libxev-0.0.0-86vtc4IcEwCqEYxEYoN_3KXmc6A9VLcm22aVImfvecYs'
+url = 'https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz'
+entries = re.findall(r'(?m)^\s*\.libxev\s*=\s*\.\{([^{}]*)\}', Path(sys.argv[3]).read_text())
+fields = re.findall(r'(?m)^\s*\.(url|hash)\s*=\s*"([^"\n]*)"\s*,', entries[0]) if len(entries) == 1 else []
+if sorted(fields) != [('hash', libxev), ('url', url)]:
+    raise SystemExit('Ghostty libxev pin changed; review the dependency and Darwin patch.')
 p = Path(sys.argv[1]) / 'p' / libxev / 'src/backend/kqueue.zig'
 if not p.exists():
-    url = 'https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz'
     fetched = subprocess.check_output([sys.argv[2], 'fetch', url], text=True).strip()
     if fetched != libxev:
         raise SystemExit('Unexpected libxev hash; refusing to patch the dependency.')
