@@ -86,6 +86,24 @@ def validate_bundle_info(info, settings):
             raise ValueError(f"Unexpected {key}: {info.get(key)!r}; expected {value!r}.")
 
 
+def write_package(app, output, source):
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".packaging-", dir=output) as staging_output:
+        staging = Path(staging_output)
+        pending = staging / f"Pocahontas-AppleSilicon-{source[:12]}.zip"
+        run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, pending)
+        verified = staging / "verify"
+        run("ditto", "-x", "-k", pending, verified)
+        verified_app = verified / app.name
+        run("codesign", "--verify", "--deep", "--strict", verified_app)
+        run("xcrun", "stapler", "validate", verified_app)
+        checksum = hashlib.sha256(pending.read_bytes()).hexdigest()
+        final = output / pending.name
+        pending.replace(final)
+        final.with_suffix(".zip.sha256").write_text(f"{checksum}  {final.name}\n")
+    return final
+
+
 def package():
     team = os.environ.get("APPLE_TEAM_ID", "")
     identity = signing_identity(team)
@@ -119,30 +137,13 @@ def package():
         validate_bundle_info(info, settings)
         if run("lipo", "-archs", app / "Contents/MacOS/Pocahontas", capture=True).strip() != "arm64":
             raise ValueError("Expected an Apple Silicon application.")
+        copy_notices(app / "Contents/Resources/Notices", derived)
+        run("codesign", "--force", "--sign", identity, "--options", "runtime", "--timestamp",
+            "--preserve-metadata=identifier,entitlements,requirements", app)
         run("codesign", "--verify", "--deep", "--strict", app)
         notarize(app, temporary)
-        stage = temporary / "Pocahontas"
-        stage.mkdir()
-        run("ditto", app, stage / "Pocahontas.app")
-        copy_notices(stage, derived)
-        (stage / "使用说明.txt").write_text(
-            f"Pocahontas — Apple Silicon，macOS 14 或更新版本。\n源码版本：{source}\n"
-            "已使用 Developer ID 签名并完成 Apple 公证。\n"
-            "解压后将 Pocahontas.app 拖入‘应用程序’，双击运行。\n", encoding="utf-8")
         output = Path(os.environ.get("OUTPUT_DIR", str(Path.home() / "Pocahontas-builds"))).expanduser()
-        output.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=".packaging-", dir=output) as staging_output:
-            pending = Path(staging_output) / f"Pocahontas-AppleSilicon-{source[:12]}.zip"
-            run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", stage, pending)
-            verified = temporary / "verify"
-            run("ditto", "-x", "-k", pending, verified)
-            verified_app = verified / "Pocahontas/Pocahontas.app"
-            run("codesign", "--verify", "--deep", "--strict", verified_app)
-            run("xcrun", "stapler", "validate", verified_app)
-            checksum = hashlib.sha256(pending.read_bytes()).hexdigest()
-            final = output / pending.name
-            pending.replace(final)
-            final.with_suffix(".zip.sha256").write_text(f"{checksum}  {final.name}\n")
+        final = write_package(app, output, source)
         print(f"Packaged {final}")
         if os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:

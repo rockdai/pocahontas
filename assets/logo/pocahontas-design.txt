@@ -12,8 +12,11 @@ original uppercase P outline, a 12 px black stroke for synthetic bold, and
 a 12-degree rightward shear for oblique styling. No font substitution.
 Canvas: 1024 × 1024 px. Glyph outline height: 704 px before emboldening.
 
-Generate both logo assets and the iPhone, iPad and Mac AppIcon catalog on macOS:
+Generate the logo and AppIcon catalog on macOS with Xcode 26 or later selected:
   swift scripts/generate-logo.swift
 
 pocahontas.svg contains glyph outlines and an opaque white background; it
 does not require the font to be installed. pocahontas.png is opaque RGB.
+Mac icons use Icon Composer's rounded shape on an 824 × 824 px white plate,
+centered in a transparent 1024 × 1024 px canvas. The glyph is drawn at each
+output size. iPhone and iPad retain the opaque square for system masking.

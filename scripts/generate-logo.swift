@@ -33,6 +33,16 @@ let bounds = shaped.boundingBoxOfPath
 var center = CGAffineTransform(translationX: 512 - bounds.midX, y: 512 - bounds.midY)
 let path = shaped.copy(using: &center)!
 
+func drawGlyph(in context: CGContext) {
+  context.setFillColor(CGColor(gray: 0, alpha: 1))
+  context.setStrokeColor(CGColor(gray: 0, alpha: 1))
+  context.setLineWidth(emboldenWidth)
+  context.setLineJoin(.round)
+  context.setLineCap(.round)
+  context.addPath(path)
+  context.drawPath(using: .fillStroke)
+}
+
 func number(_ value: CGFloat) -> String {
   String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), Double(value))
 }
@@ -71,13 +81,7 @@ context.setFillColor(CGColor(gray: 1, alpha: 1))
 context.fill(CGRect(x: 0, y: 0, width: canvas, height: canvas))
 context.translateBy(x: 0, y: CGFloat(canvas))
 context.scaleBy(x: 1, y: -1)
-context.setFillColor(CGColor(gray: 0, alpha: 1))
-context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-context.setLineWidth(emboldenWidth)
-context.setLineJoin(.round)
-context.setLineCap(.round)
-context.addPath(path)
-context.drawPath(using: .fillStroke)
+drawGlyph(in: context)
 guard let rendered = context.makeImage(),
   let destination = CGImageDestinationCreateWithURL(
     directory.appendingPathComponent("pocahontas.png") as CFURL, "public.png" as CFString, 1, nil)
@@ -100,20 +104,63 @@ var images: [[String: String]] = [["filename": "icon-1024.png", "idiom": "univer
   "platform": "ios", "size": "1024x1024"]]
 for size in [16, 32, 128, 256, 512] {
   for scale in [1, 2] {
-    images.append(["filename": "icon-\(size * scale).png", "idiom": "mac",
+    images.append(["filename": "mac-icon-\(size * scale).png", "idiom": "mac",
       "size": "\(size)x\(size)", "scale": "\(scale)x"])
   }
 }
 try writeJSON(["images": images, "info": info], to: icons.appendingPathComponent("Contents.json"))
+try Data(contentsOf: directory.appendingPathComponent("pocahontas.png")).write(
+  to: icons.appendingPathComponent("icon-1024.png"), options: .atomic)
+
+let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+let document = temporary.appendingPathComponent("Pocahontas.icon")
+try FileManager.default.createDirectory(at: document, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: temporary) }
+try writeJSON([
+  "fill": ["solid": "srgb:1.00000,1.00000,1.00000,1.00000"],
+  "groups": [],
+  "supported-platforms": ["squares": "shared"]
+], to: document.appendingPathComponent("icon.json"))
+let selection = Process()
+let selectedPath = Pipe()
+selection.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+selection.arguments = ["-p"]
+selection.standardOutput = selectedPath
+try selection.run()
+let developerPath = String(data: selectedPath.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)!
+selection.waitUntilExit()
+guard selection.terminationStatus == 0 else { fatalError("Unable to locate Xcode") }
+let developer = URL(fileURLWithPath: developerPath.trimmingCharacters(in: .whitespacesAndNewlines))
+let composer = Process()
+composer.executableURL = developer.deletingLastPathComponent().appendingPathComponent(
+  "Applications/Icon Composer.app/Contents/Executables/ictool")
+let roundedURL = temporary.appendingPathComponent("rounded.png")
+composer.arguments = [document.path, "--export-image", "--output-file", roundedURL.path,
+  "--platform", "macOS", "--rendition", "Default", "--width", "824", "--height", "824", "--scale", "1"]
+try composer.run()
+composer.waitUntilExit()
+guard composer.terminationStatus == 0,
+  let roundedSource = CGImageSourceCreateWithURL(roundedURL as CFURL, nil),
+  let rounded = CGImageSourceCreateImageAtIndex(roundedSource, 0, nil)
+else { fatalError("Unable to render the macOS icon with Icon Composer") }
+
 for size in [16, 32, 64, 128, 256, 512, 1024] {
   guard let scaled = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
     bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
-    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
   else { fatalError("Unable to create the \(size) px icon canvas") }
   scaled.interpolationQuality = .high
-  scaled.draw(rendered, in: CGRect(x: 0, y: 0, width: size, height: size))
+  scaled.scaleBy(x: CGFloat(size) / 1024, y: CGFloat(size) / 1024)
+  scaled.draw(rounded, in: CGRect(x: 100, y: 100, width: 824, height: 824))
+  scaled.setBlendMode(.sourceIn)
+  scaled.setFillColor(CGColor(gray: 1, alpha: 1))
+  scaled.fill(CGRect(x: 0, y: 0, width: 1024, height: 1024))
+  scaled.setBlendMode(.normal)
+  scaled.translateBy(x: 100, y: 924)
+  scaled.scaleBy(x: 824.0 / 1024, y: -824.0 / 1024)
+  drawGlyph(in: scaled)
   guard let icon = scaled.makeImage(), let output = CGImageDestinationCreateWithURL(
-    icons.appendingPathComponent("icon-\(size).png") as CFURL, "public.png" as CFString, 1, nil)
+    icons.appendingPathComponent("mac-icon-\(size).png") as CFURL, "public.png" as CFString, 1, nil)
   else { fatalError("Unable to create the \(size) px icon output") }
   CGImageDestinationAddImage(output, icon, nil)
   guard CGImageDestinationFinalize(output) else { fatalError("Unable to write the \(size) px icon") }
