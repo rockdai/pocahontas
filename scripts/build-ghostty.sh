@@ -13,11 +13,16 @@ if [[ -n "${ZIG_CACHE_SEED:-}" && ! -d "$ZIG_GLOBAL_CACHE_DIR/p" ]]; then
   cp -R "$ZIG_CACHE_SEED/p" "$ZIG_GLOBAL_CACHE_DIR/p"
 fi
 cd "$ENGINE"
-"$ZIG" build --fetch=all
-python3 - "$ZIG_GLOBAL_CACHE_DIR" <<'PY'
+python3 - "$ZIG_GLOBAL_CACHE_DIR" "$ZIG" <<'PY'
 from pathlib import Path
-import sys
-p = Path(sys.argv[1]) / 'p/libxev-0.0.0-86vtc4IcEwCqEYxEYoN_3KXmc6A9VLcm22aVImfvecYs/src/backend/kqueue.zig'
+import subprocess, sys
+libxev = 'libxev-0.0.0-86vtc4IcEwCqEYxEYoN_3KXmc6A9VLcm22aVImfvecYs'
+p = Path(sys.argv[1]) / 'p' / libxev / 'src/backend/kqueue.zig'
+if not p.exists():
+    url = 'https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz'
+    fetched = subprocess.check_output([sys.argv[2], 'fetch', url], text=True).strip()
+    if fetched != libxev:
+        raise SystemExit('Unexpected libxev hash; refusing to patch the dependency.')
 s = p.read_text()
 old = '.machport => if (comptime builtin.os.tag != .macos) return null else kevent'
 new = '.machport => if (comptime !builtin.os.tag.isDarwin()) return null else kevent'
