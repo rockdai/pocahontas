@@ -86,11 +86,20 @@ def validate_bundle_info(info, settings):
             raise ValueError(f"Unexpected {key}: {info.get(key)!r}; expected {value!r}.")
 
 
+def package_name(version):
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError("Expected a three-component numeric CFBundleShortVersionString.")
+    return f"Pocahontas-{version}-macos-arm64.zip"
+
+
 def write_package(app, output, source):
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    name = package_name(info.get("CFBundleShortVersionString"))
+    output = output / source[:12]
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".packaging-", dir=output) as staging_output:
         staging = Path(staging_output)
-        pending = staging / f"Pocahontas-AppleSilicon-{source[:12]}.zip"
+        pending = staging / name
         run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, pending)
         verified = staging / "verify"
         run("ditto", "-x", "-k", pending, verified)

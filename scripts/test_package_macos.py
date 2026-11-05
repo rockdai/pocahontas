@@ -160,7 +160,8 @@ class NoticeTests(unittest.TestCase):
         shutil.copy2(package.__file__, self.root / "scripts/package-macos.py")
         info = self.derived / "Build/Products/Debug/Pocahontas.app/Contents/Info.plist"
         info.parent.mkdir(parents=True)
-        info.write_bytes(plistlib.dumps({"PocahontasServerURL": "https://example.invalid"}))
+        info.write_bytes(plistlib.dumps({"PocahontasServerURL": "https://example.invalid",
+                                        "CFBundleShortVersionString": "2.3.4"}))
         script = Path(__file__).with_name("package-macos-test.sh").read_text()
         embedded = script.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
         result = subprocess.run([sys.executable, "-", str(self.stage), "source-commit", str(self.root), str(self.derived)],
@@ -170,6 +171,7 @@ class NoticeTests(unittest.TestCase):
         instructions = (self.stage / "Contents/Resources/使用说明.txt").read_text()
         self.assertIn("source-commit", instructions)
         self.assertIn("https://example.invalid", instructions)
+        self.assertEqual(result.stdout.strip(), "Pocahontas-2.3.4-macos-arm64.zip")
 
 
 class PackageLayoutTests(unittest.TestCase):
@@ -181,7 +183,8 @@ class PackageLayoutTests(unittest.TestCase):
         notices = self.app / "Contents/Resources/Notices"
         notices.mkdir(parents=True)
         (notices / "LICENSE").write_text("license fixture")
-        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundlePackageType": "APPL"}))
+        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundlePackageType": "APPL",
+                                                                    "CFBundleShortVersionString": "2.3.4"}))
         self.output = self.root / "output"
         self.source = "0123456789abcdef"
         self.real_run = package.run
@@ -194,17 +197,39 @@ class PackageLayoutTests(unittest.TestCase):
     def test_zip_extracts_to_app_with_licenses_inside_and_matching_checksum(self):
         with patch.object(package, "run", side_effect=self.commands):
             archive = package.write_package(self.app, self.output, self.source)
+        self.assertEqual(archive.name, "Pocahontas-2.3.4-macos-arm64.zip")
         with zipfile.ZipFile(archive) as zipped:
             names = [n for n in zipped.namelist() if not n.startswith("__MACOSX/")]
             self.assertEqual({n.split("/")[0] for n in names}, {"Pocahontas.app"})
             self.assertEqual(zipped.read("Pocahontas.app/Contents/Resources/Notices/LICENSE"), b"license fixture")
         self.assertEqual(archive.with_suffix(".zip.sha256").read_text(),
                          f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
-        self.assertFalse(list(self.output.glob(".packaging-*")))
+        self.assertFalse(list(self.output.rglob(".packaging-*")))
+
+    def test_different_commits_keep_separate_packages_with_the_same_filename(self):
+        with patch.object(package, "run", side_effect=self.commands):
+            first = package.write_package(self.app, self.output, self.source)
+            second = package.write_package(self.app, self.output, "abcdef0123456789")
+        self.assertNotEqual(first, second)
+        self.assertEqual(first.name, second.name)
+        for archive in (first, second):
+            self.assertTrue(archive.exists())
+            self.assertTrue(archive.with_suffix(".zip.sha256").exists())
+
+    def test_missing_or_invalid_version_does_not_create_an_output(self):
+        for version in (None, "", "$(MARKETING_VERSION)", "../1.2.3", "1.2.3/extra", "1.2.3\n", 123):
+            with self.subTest(version=version):
+                info = {} if version is None else {"CFBundleShortVersionString": version}
+                (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+                with patch.object(package, "run") as run:
+                    with self.assertRaisesRegex(ValueError, "CFBundleShortVersionString"):
+                        package.write_package(self.app, self.output, self.source)
+                    run.assert_not_called()
+                self.assertFalse(self.output.exists())
 
     def test_failed_signature_or_ticket_validation_preserves_existing_package(self):
-        self.output.mkdir()
-        archive = self.output / f"Pocahontas-AppleSilicon-{self.source[:12]}.zip"
+        archive = self.output / self.source[:12] / "Pocahontas-2.3.4-macos-arm64.zip"
+        archive.parent.mkdir(parents=True)
         checksum = archive.with_suffix(".zip.sha256")
         archive.write_bytes(b"previous package")
         checksum.write_text("previous checksum")
@@ -219,7 +244,7 @@ class PackageLayoutTests(unittest.TestCase):
                         package.write_package(self.app, self.output, self.source)
                 self.assertEqual(archive.read_bytes(), b"previous package")
                 self.assertEqual(checksum.read_text(), "previous checksum")
-                self.assertFalse(list(self.output.glob(".packaging-*")))
+                self.assertFalse(list(self.output.rglob(".packaging-*")))
 
 
 class IconTests(unittest.TestCase):

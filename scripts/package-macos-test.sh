@@ -9,6 +9,8 @@ mkdir -p "$OUTPUT_DIR"
 STAGING="$(mktemp -d "$ROOT/.build/mac-package.XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT
 SOURCE_COMMIT="$(git rev-parse HEAD)"
+OUTPUT_DIR="$OUTPUT_DIR/${SOURCE_COMMIT:0:12}"
+mkdir -p "$OUTPUT_DIR"
 if [[ -n "$(git status --porcelain)" ]]; then
   echo 'Commit source changes before packaging so the archive identifies its source.' >&2
   exit 1
@@ -29,7 +31,7 @@ APP="$DERIVED_DATA_PATH/Build/Products/Debug/Pocahontas.app"
 [[ ! -d "$APP/Contents/PlugIns" ]] || { echo 'Unexpected test plug-ins in application.' >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
 ditto "$APP" "$STAGING/Pocahontas.app"
-python3 - "$STAGING/Pocahontas.app" "$SOURCE_COMMIT" "$ROOT" "$DERIVED_DATA_PATH" <<'PY'
+ARCHIVE_NAME="$(python3 - "$STAGING/Pocahontas.app" "$SOURCE_COMMIT" "$ROOT" "$DERIVED_DATA_PATH" <<'PY'
 from pathlib import Path
 import importlib.util, plistlib, sys
 stage, source = Path(sys.argv[1]), sys.argv[2]
@@ -41,6 +43,7 @@ account_instructions = (f'账号服务：{server_url}。可在 Saved Connections
 spec = importlib.util.spec_from_file_location('package_macos', root / 'scripts/package-macos.py')
 package = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package)
+archive_name = package.package_name(app_info.get('CFBundleShortVersionString'))
 package.copy_notices(stage / 'Contents/Resources/Notices', derived)
 (stage / 'Contents/Resources/使用说明.txt').write_text(f'''Pocahontas — MacBook 测试版
 源码版本：{source}
@@ -61,12 +64,14 @@ Intel Mac 不能使用此安装包；最低系统版本仍需实机验收。
 
 源码与构建说明：https://github.com/rockdai/pocahontas
 ''', encoding='utf-8')
+print(archive_name)
 PY
+)"
 codesign --force --sign - --preserve-metadata=identifier,entitlements,requirements,flags,runtime "$STAGING/Pocahontas.app"
-ARCHIVE="$OUTPUT_DIR/Pocahontas-AppleSilicon.zip"
+ARCHIVE="$OUTPUT_DIR/$ARCHIVE_NAME"
 ditto -c -k --sequesterRsrc --keepParent "$STAGING/Pocahontas.app" "$ARCHIVE"
 mkdir "$STAGING/verify"
 ditto -x -k "$ARCHIVE" "$STAGING/verify"
 codesign --verify --deep --strict "$STAGING/verify/Pocahontas.app"
-(cd "$OUTPUT_DIR" && shasum -a 256 Pocahontas-AppleSilicon.zip > SHA256SUMS.txt)
+(cd "$OUTPUT_DIR" && shasum -a 256 "$ARCHIVE_NAME" > "$ARCHIVE_NAME.sha256")
 echo "Packaged $ARCHIVE from $SOURCE_COMMIT"
