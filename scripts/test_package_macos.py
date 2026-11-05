@@ -223,10 +223,22 @@ class PackageLayoutTests(unittest.TestCase):
 
 
 class IconTests(unittest.TestCase):
-    def test_mac_icons_have_transparent_margins_and_round_corners_while_ios_is_opaque(self):
-        catalog = Path(__file__).resolve().parents[1] / "Apps/Shared/Assets.xcassets/AppIcon.appiconset"
+    def test_native_mac_icon_has_one_white_plate_and_round_corners_while_ios_is_opaque(self):
+        root = Path(__file__).resolve().parents[1]
+        catalog = root / "Apps/Shared/Assets.xcassets/AppIcon.appiconset"
         entries = json.loads((catalog / "Contents.json").read_text())["images"]
+        directory = tempfile.TemporaryDirectory(prefix="native icon ")
+        self.addCleanup(directory.cleanup)
+        rendered = Path(directory.name) / "mac-native.png"
+        developer = Path(subprocess.check_output(["xcode-select", "-p"], text=True).strip())
+        composer = developer.parent / "Applications/Icon Composer.app/Contents/Executables/ictool"
+        subprocess.run([str(composer), str(root / "Apps/macOS/MacAppIcon.icon"), "--export-image",
+                        "--output-file", str(rendered), "--platform", "macOS", "--rendition", "Default",
+                        "--width", "256", "--height", "256", "--scale", "1"],
+                       capture_output=True, text=True, check=True)
         paths = sorted({str(catalog / entry["filename"]) for entry in entries})
+        paths.append(str(rendered))
+        entries.append({"filename": rendered.name, "idiom": "mac", "size": "256x256"})
         script = r'''
 import CoreGraphics
 import Foundation
@@ -250,8 +262,8 @@ for file in CommandLine.arguments.dropFirst() {
     let corner = Int(Double(size) * 0.13)
     let hasBlack = (0..<(size * size)).contains { pixels[$0 * 4] < 20 && pixels[$0 * 4 + 3] > 240 }
     results[URL(fileURLWithPath: file).lastPathComponent] = ["width": size, "height": image.height,
-        "edgeAlpha": edge, "inset": inset, "corner": pixel(corner, corner),
-        "background": pixel(size / 2, Int(Double(size) * 0.16)), "hasBlack": hasBlack]
+        "edgeAlpha": edge, "inset": inset, "corner": pixel(corner, corner), "origin": pixel(0, 0),
+        "background": pixel(size / 2, Int(Double(size) * 0.05)), "hasBlack": hasBlack]
 }
 let data = try JSONSerialization.data(withJSONObject: results)
 print(String(data: data, encoding: .utf8)!)
@@ -264,14 +276,12 @@ print(String(data: data, encoding: .utf8)!)
                 size = int(entry["size"].split("x")[0]) * int(entry.get("scale", "1x").rstrip("x"))
                 self.assertEqual((icon["width"], icon["height"]), (size, size))
                 self.assertTrue(icon["hasBlack"])
+                self.assertEqual(icon["edgeAlpha"], 255)
                 if entry["idiom"] == "mac":
-                    self.assertEqual(icon["edgeAlpha"], 0)
-                    self.assertGreaterEqual(icon["inset"], size * 0.07)
-                    self.assertLessEqual(icon["inset"], size * 0.15)
-                    self.assertLess(icon["corner"][3], 128)
-                    self.assertEqual(icon["background"], [255, 255, 255, 255])
+                    self.assertLessEqual(icon["inset"], size * 0.02)
+                    self.assertEqual(icon["origin"][3], 0)
+                    self.assertTrue(all(channel >= 250 for channel in icon["background"]))
                 else:
-                    self.assertEqual(icon["edgeAlpha"], 255)
                     self.assertEqual(icon["corner"], [255, 255, 255, 255])
 
 

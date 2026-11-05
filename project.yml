@@ -81,7 +81,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas.mac
         PRODUCT_MODULE_NAME: PocahontasMac
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_APPICON_NAME: MacAppIcon
         PRODUCT_NAME: Pocahontas
         POCAHONTAS_MAC_TEST_PORT: "62225"
         CODE_SIGN_ENTITLEMENTS: Apps/macOS/Pocahontas.entitlements

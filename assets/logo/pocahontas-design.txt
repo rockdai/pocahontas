@@ -17,6 +17,6 @@ Generate the logo and AppIcon catalog on macOS with Xcode 26 or later selected:
 
 pocahontas.svg contains glyph outlines and an opaque white background; it
 does not require the font to be installed. pocahontas.png is opaque RGB.
-Mac icons use Icon Composer's rounded shape on an 824 × 824 px white plate,
-centered in a transparent 1024 × 1024 px canvas. The glyph is drawn at each
-output size. iPhone and iPad retain the opaque square for system masking.
+MacAppIcon.icon uses a white background and the same black P vector layer.
+Xcode generates the native macOS icon and compatible images for older macOS
+versions. iPhone and iPad retain the opaque square for system masking.
