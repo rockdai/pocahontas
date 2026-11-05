@@ -31,33 +31,17 @@ codesign --verify --deep --strict "$APP"
 ditto "$APP" "$STAGING/Pocahontas/Pocahontas.app"
 python3 - "$STAGING/Pocahontas" "$SOURCE_COMMIT" "$ROOT" "$DERIVED_DATA_PATH" <<'PY'
 from pathlib import Path
-import os, plistlib, re, shutil, sys
+import importlib.util, plistlib, sys
 stage, source = Path(sys.argv[1]), sys.argv[2]
 root, derived = Path(sys.argv[3]), Path(sys.argv[4])
 app_info = plistlib.loads((derived / 'Build/Products/Debug/Pocahontas.app/Contents/Info.plist').read_bytes())
 server_url = app_info.get('PocahontasServerURL', '')
 account_instructions = (f'账号服务：{server_url}。可在 Saved Connections → Account & Sync 注册与登录。'
                         if server_url else '此包未配置账号服务，使用本地模式。')
-# Carry the existing notices and the licenses shipped with the linked source trees.
-for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'Licenses', 'assets/logo/fonts/OFL.txt', 'Packages/PocahontasKit/Package.resolved', 'Frameworks/build-info.json']:
-    original, destination = root / name, stage / name
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if original.is_dir():
-        shutil.copytree(original, destination)
-    else:
-        shutil.copy2(original, destination)
-notice_name = re.compile(r'^(LICENSE|LICENCE|COPYING|NOTICE|UNLICENSE|COPYRIGHT)([._ -].*)?$', re.I)
-for label, tree in [('ghostty', root / 'vendor/ghostty'), ('zig-packages', root / '.cache/zig/p'), ('swift-packages', derived / 'SourcePackages/checkouts')]:
-    if not tree.is_dir():
-        raise SystemExit(f'Missing dependency sources for notices: {tree}')
-    for folder, directories, files in os.walk(tree):
-        directories[:] = [d for d in directories if d not in {'.git', '.build', '.zig-cache', 'zig-out'}]
-        for name in files:
-            if notice_name.match(name):
-                original = Path(folder) / name
-                destination = stage / 'DependencyNotices' / label / original.relative_to(tree)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(original, destination)
+spec = importlib.util.spec_from_file_location('package_macos', root / 'scripts/package-macos.py')
+package = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(package)
+package.copy_notices(stage, derived)
 (stage / '使用说明.txt').write_text(f'''Pocahontas — MacBook 测试版
 源码版本：{source}
 平台：Apple Silicon / arm64（M1 或更新），最低系统版本 macOS 14。

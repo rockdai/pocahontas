@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -39,7 +40,12 @@ def notarize(app, directory):
                             "--keychain-profile", PROFILE, "--wait", "--timeout", "30m",
                             "--output-format", "json", capture=True))
     if result.get("status") != "Accepted":
-        raise ValueError(f"Notarization was not accepted: {result.get('status')}; submission {result.get('id')}")
+        message = f"Notarization was not accepted: {result.get('status')}; submission {result.get('id')}"
+        if result.get("id"):
+            action = "log" if result.get("status") == "Invalid" else "info"
+            command = shlex.join(["xcrun", "notarytool", action, result["id"], "--keychain-profile", PROFILE])
+            message += f"\nInspect with: {command}"
+        raise ValueError(message)
     run("xcrun", "stapler", "staple", app)
     run("xcrun", "stapler", "validate", app)
     run("codesign", "--verify", "--deep", "--strict", app)
@@ -71,6 +77,15 @@ def copy_notices(stage, derived):
                     shutil.copy2(source, destination)
 
 
+def validate_bundle_info(info, settings):
+    expected = {"CFBundleIdentifier": "com.rockdai.pocahontas.mac",
+                "CFBundleShortVersionString": settings.get("MARKETING_VERSION"),
+                "CFBundleVersion": settings.get("CURRENT_PROJECT_VERSION")}
+    for key, value in expected.items():
+        if not value or info.get(key) != value:
+            raise ValueError(f"Unexpected {key}: {info.get(key)!r}; expected {value!r}.")
+
+
 def package():
     team = os.environ.get("APPLE_TEAM_ID", "")
     identity = signing_identity(team)
@@ -90,16 +105,18 @@ def package():
     with tempfile.TemporaryDirectory(prefix="macos-release-", dir=ROOT / ".build") as directory:
         temporary = Path(directory)
         archive = temporary / "Pocahontas.xcarchive"
-        run("xcodebuild", "-project", "pocahontas.xcodeproj", "-scheme", "pocahontas-macOS",
-            "-configuration", "Release", "-destination", "generic/platform=macOS",
-            "-derivedDataPath", derived, "-archivePath", archive, "-disableAutomaticPackageResolution",
-            "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGN_STYLE=Manual",
-            f"DEVELOPMENT_TEAM={team}", f"CODE_SIGN_IDENTITY={identity}",
-            "OTHER_CODE_SIGN_FLAGS=--timestamp", "archive")
+        build = ("xcodebuild", "-project", "pocahontas.xcodeproj", "-scheme", "pocahontas-macOS",
+                 "-configuration", "Release", "-destination", "generic/platform=macOS",
+                 "-derivedDataPath", derived, "-archivePath", archive, "-disableAutomaticPackageResolution",
+                 "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGN_STYLE=Manual",
+                 f"DEVELOPMENT_TEAM={team}", f"CODE_SIGN_IDENTITY={identity}",
+                 "OTHER_CODE_SIGN_FLAGS=--timestamp")
+        targets = json.loads(run(*build, "-showBuildSettings", "-json", capture=True))
+        settings = next(target["buildSettings"] for target in targets if target["target"] == "pocahontas-macOS")
+        run(*build, "archive")
         app = archive / "Products/Applications/Pocahontas.app"
         info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
-        if info.get("CFBundleIdentifier") != "com.rockdai.pocahontas.mac":
-            raise ValueError("Unexpected application bundle identifier.")
+        validate_bundle_info(info, settings)
         if run("lipo", "-archs", app / "Contents/MacOS/Pocahontas", capture=True).strip() != "arm64":
             raise ValueError("Expected an Apple Silicon application.")
         run("codesign", "--verify", "--deep", "--strict", app)

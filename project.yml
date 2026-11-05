@@ -95,6 +95,8 @@ targets:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleDisplayName: Pocahontas
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         PocahontasServerURL: "$(POCAHONTAS_SERVER_URL)"
         NSPrincipalClass: NSApplication
         LSApplicationCategoryType: public.app-category.developer-tools
