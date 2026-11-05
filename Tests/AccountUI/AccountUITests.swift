@@ -11,18 +11,33 @@ final class AccountUITests: XCTestCase {
     openAccount(app)
     capture("01-sign-in", app)
     let email = "demo-\(UUID().uuidString.prefix(6).lowercased())@example.com"
+    let password = "123456789abcdef"
     fill(app.textFields["account.email"], email)
-    fill(app.secureTextFields["account.password"], "Pocahontas UI test password")
+    fill(app.secureTextFields["account.password"], password)
     capture("02-sign-in-filled", app)
     select("Register", app)
     capture("03-register", app)
-    fill(app.secureTextFields["account.password"], "Pocahontas UI test password")
-    fill(app.secureTextFields["account.confirm"], "Pocahontas UI test password")
+    fill(app.secureTextFields["account.password"], "short password")
+    fill(app.secureTextFields["account.confirm"], "short password")
     tap(app.buttons["account.send-code"])
     XCTAssertTrue(app.staticTexts["account.notice"].waitForExistence(timeout: 10))
     let data = try Data(contentsOf: URL(string: address + "/test/code?email=" + email)!)
     let response = try JSONDecoder().decode(Code.self, from: data)
     fill(app.textFields["account.code"], response.code)
+    expectValidation("Use a password with at least 15 characters and at most 1,024 UTF-8 bytes.", app)
+    fill(app.secureTextFields["account.password"], password)
+    expectValidation("Passwords do not match.", app)
+    fill(app.secureTextFields["account.confirm"], "")
+    expectValidation("Confirm your password.", app)
+    fill(app.secureTextFields["account.confirm"], password)
+    for invalid in ["1234567", "123456789", "1234abcd", "１２３４５６７８"] {
+      fill(app.textFields["account.code"], invalid)
+      expectValidation("Enter the 8-digit code from your email.", app)
+    }
+    fill(app.textFields["account.code"], " \(response.code) ")
+    reveal(app.buttons["account.submit"])
+    XCTAssertTrue(app.buttons["account.submit"].isEnabled)
+    XCTAssertFalse(app.staticTexts["account.validation"].exists)
     capture("04-register-code", app)
     tap(app.buttons["account.submit"])
     XCTAssertTrue(app.buttons["account.submit"].waitForNonExistence(timeout: 15))
@@ -44,7 +59,7 @@ final class AccountUITests: XCTestCase {
     XCTAssertTrue(app.buttons["library.sync"].waitForExistence(timeout: 10))
     tap(app.buttons["library.sync"])
     fill(app.textFields["account.email"], email)
-    fill(app.secureTextFields["account.password"], "Pocahontas UI test password")
+    fill(app.secureTextFields["account.password"], password)
     tap(app.buttons["account.submit"])
     XCTAssertTrue(app.buttons["account.submit"].waitForNonExistence(timeout: 15))
     tap(app.buttons["library.sync"])
@@ -66,6 +81,8 @@ final class AccountUITests: XCTestCase {
     fill(app.textFields["account.email"], "demo-reset@example.com")
     fill(app.secureTextFields["account.password"], "Pocahontas reset password")
     fill(app.secureTextFields["account.confirm"], "Pocahontas reset password")
+    fill(app.textFields["account.code"], "12345678")
+    expectValidation("Select Send Code to get a verification code for this email.", app)
     tap(app.buttons["account.send-code"])
     XCTAssertTrue(app.staticTexts["account.notice"].waitForExistence(timeout: 10))
     // Exercise the destructive confirmation, then cancel; actual reset is covered by the API integration test.
@@ -87,6 +104,11 @@ final class AccountUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Clear Data and Reset Password"].waitForNonExistence(timeout: 5))
   }
   private struct Code: Decodable { var code: String }
+  @MainActor private func expectValidation(_ message: String, _ app: XCUIApplication) {
+    reveal(app.buttons["account.submit"])
+    XCTAssertFalse(app.buttons["account.submit"].isEnabled)
+    XCTAssertEqual(app.staticTexts["account.validation"].label, message)
+  }
   @MainActor private func openAccount(_ app: XCUIApplication) {
     XCTAssertTrue(app.buttons["library.open"].waitForExistence(timeout: 10))
     tap(app.buttons["library.open"])
@@ -149,9 +171,14 @@ final class AccountUITests: XCTestCase {
       }
     #endif
     if let old = element.value as? String, !old.isEmpty, old != element.placeholderValue {
+      #if os(macOS)
+        element.typeKey("a", modifierFlags: .command)
+        element.typeText(XCUIKeyboardKey.delete.rawValue)
+      #else
       element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
+      #endif
     }
-    element.typeText(value)
+    if !value.isEmpty { element.typeText(value) }
     #if os(iOS)
       element.typeText("\n")
     #endif

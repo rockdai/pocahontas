@@ -32,6 +32,16 @@ import Testing
       try VaultSnapshot.decode(Data("{\"schemaVersion\":2,\"records\":[]}".utf8), scope: "local")
     }
   }
+  @Test func passwordLengthBoundaries() throws {
+    #expect(throws: AccountError.self) { try AccountCrypto.validatePassword(String(repeating: "a", count: 14)) }
+    try AccountCrypto.validatePassword(String(repeating: "a", count: 15))
+    try AccountCrypto.validatePassword(String(repeating: "a", count: 1024))
+    #expect(throws: AccountError.self) { try AccountCrypto.validatePassword(String(repeating: "a", count: 1025)) }
+    try AccountCrypto.validatePassword(String(repeating: "é", count: 512))
+    #expect(throws: AccountError.self) { try AccountCrypto.validatePassword(String(repeating: "é", count: 513)) }
+    #expect(throws: AccountError.self) { try AccountCrypto.validatePassword(String(repeating: "e\u{301}", count: 14)) }
+    try AccountCrypto.validatePassword(String(repeating: "e\u{301}", count: 15))
+  }
   @Test func duplicateMetadataIDsCannotOverwriteDifferentRecordKinds() throws {
     let id = UUID()
     let data = try VaultSnapshot(records: [LibraryRecord(tombstone: id, kind: .host),
