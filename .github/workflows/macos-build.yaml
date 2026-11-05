@@ -1,0 +1,42 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocahontas-macos-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.repository == 'rockdai/pocahontas' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, macOS, ARM64, pocahontas, pocahontas-macmini-2026]
+    timeout-minutes: 90
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+    steps:
+      - name: Checkout trusted commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          submodules: true
+          clean: true
+
+      - name: Run unit tests
+        run: |
+          swift test --package-path Packages/PocahontasKit -j 4 --skip IntegrationTests
+          python3 -m unittest discover -s scripts -p 'test_package_macos.py'
+
+      - name: Build, sign and notarize
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH"
+          python3 scripts/package-macos.py
