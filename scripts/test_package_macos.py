@@ -1,4 +1,6 @@
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import plistlib
 import shutil
@@ -6,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 
@@ -124,15 +127,16 @@ class NoticeTests(unittest.TestCase):
         (self.root / ".env").write_text("private fixture")
         (self.root / "vendor/ghostty/private.key").write_text("private fixture")
 
-    def assert_notices(self):
+    def assert_notices(self, stage=None):
+        stage = stage or self.stage
         for destination, source in (("ghostty/LICENSE", "vendor/ghostty/LICENSE"),
                                     ("zig-packages/dependency/NOTICE.txt", ".cache/zig/p/dependency/NOTICE.txt"),
                                     ("swift-packages/dependency/COPYING", "derived/SourcePackages/checkouts/dependency/COPYING")):
-            self.assertEqual((self.stage / "DependencyNotices" / destination).read_text(), source)
-        self.assertFalse((self.stage / "DependencyNotices/ghostty/.git").exists())
-        self.assertFalse((self.stage / "DependencyNotices/ghostty/.build").exists())
-        self.assertFalse(list(self.stage.rglob(".env")))
-        self.assertFalse(list(self.stage.rglob("private.key")))
+            self.assertEqual((stage / "DependencyNotices" / destination).read_text(), source)
+        self.assertFalse((stage / "DependencyNotices/ghostty/.git").exists())
+        self.assertFalse((stage / "DependencyNotices/ghostty/.build").exists())
+        self.assertFalse(list(stage.rglob(".env")))
+        self.assertFalse(list(stage.rglob("private.key")))
 
     def test_notices_include_dependencies_without_private_files(self):
         with patch.object(package, "ROOT", self.root):
@@ -156,16 +160,154 @@ class NoticeTests(unittest.TestCase):
         shutil.copy2(package.__file__, self.root / "scripts/package-macos.py")
         info = self.derived / "Build/Products/Debug/Pocahontas.app/Contents/Info.plist"
         info.parent.mkdir(parents=True)
-        info.write_bytes(plistlib.dumps({"PocahontasServerURL": "https://example.invalid"}))
+        info.write_bytes(plistlib.dumps({"PocahontasServerURL": "https://example.invalid",
+                                        "CFBundleShortVersionString": "2.3.4"}))
         script = Path(__file__).with_name("package-macos-test.sh").read_text()
         embedded = script.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
         result = subprocess.run([sys.executable, "-", str(self.stage), "source-commit", str(self.root), str(self.derived)],
                                 input=embedded, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assert_notices()
-        instructions = (self.stage / "使用说明.txt").read_text()
+        self.assert_notices(self.stage / "Contents/Resources/Notices")
+        instructions = (self.stage / "Contents/Resources/使用说明.txt").read_text()
         self.assertIn("source-commit", instructions)
         self.assertIn("https://example.invalid", instructions)
+        self.assertEqual(result.stdout.strip(), "Pocahontas-2.3.4-macos-arm64.zip")
+
+
+class PackageLayoutTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory(prefix="package layout ")
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.app = self.root / "Pocahontas.app"
+        notices = self.app / "Contents/Resources/Notices"
+        notices.mkdir(parents=True)
+        (notices / "LICENSE").write_text("license fixture")
+        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundlePackageType": "APPL",
+                                                                    "CFBundleShortVersionString": "2.3.4"}))
+        self.output = self.root / "output"
+        self.source = "0123456789abcdef"
+        self.real_run = package.run
+
+    def commands(self, *args):
+        if args[0] == "ditto":
+            return self.real_run(*args)
+        self.assertTrue(Path(args[-1]).is_dir())
+
+    def test_zip_extracts_to_app_with_licenses_inside_and_matching_checksum(self):
+        with patch.object(package, "run", side_effect=self.commands):
+            archive = package.write_package(self.app, self.output, self.source)
+        self.assertEqual(archive.name, "Pocahontas-2.3.4-macos-arm64.zip")
+        with zipfile.ZipFile(archive) as zipped:
+            names = [n for n in zipped.namelist() if not n.startswith("__MACOSX/")]
+            self.assertEqual({n.split("/")[0] for n in names}, {"Pocahontas.app"})
+            self.assertEqual(zipped.read("Pocahontas.app/Contents/Resources/Notices/LICENSE"), b"license fixture")
+        self.assertEqual(archive.with_suffix(".zip.sha256").read_text(),
+                         f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
+        self.assertFalse(list(self.output.rglob(".packaging-*")))
+
+    def test_different_commits_keep_separate_packages_with_the_same_filename(self):
+        with patch.object(package, "run", side_effect=self.commands):
+            first = package.write_package(self.app, self.output, self.source)
+            second = package.write_package(self.app, self.output, "abcdef0123456789")
+        self.assertNotEqual(first, second)
+        self.assertEqual(first.name, second.name)
+        for archive in (first, second):
+            self.assertTrue(archive.exists())
+            self.assertTrue(archive.with_suffix(".zip.sha256").exists())
+
+    def test_missing_or_invalid_version_does_not_create_an_output(self):
+        for version in (None, "", "$(MARKETING_VERSION)", "../1.2.3", "1.2.3/extra", "1.2.3\n", 123):
+            with self.subTest(version=version):
+                info = {} if version is None else {"CFBundleShortVersionString": version}
+                (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+                with patch.object(package, "run") as run:
+                    with self.assertRaisesRegex(ValueError, "CFBundleShortVersionString"):
+                        package.write_package(self.app, self.output, self.source)
+                    run.assert_not_called()
+                self.assertFalse(self.output.exists())
+
+    def test_failed_signature_or_ticket_validation_preserves_existing_package(self):
+        archive = self.output / self.source[:12] / "Pocahontas-2.3.4-macos-arm64.zip"
+        archive.parent.mkdir(parents=True)
+        checksum = archive.with_suffix(".zip.sha256")
+        archive.write_bytes(b"previous package")
+        checksum.write_text("previous checksum")
+        for command in ("codesign", "xcrun"):
+            with self.subTest(command=command):
+                def commands(*args):
+                    if args[0] == command:
+                        raise subprocess.CalledProcessError(1, command)
+                    return self.commands(*args)
+                with patch.object(package, "run", side_effect=commands):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        package.write_package(self.app, self.output, self.source)
+                self.assertEqual(archive.read_bytes(), b"previous package")
+                self.assertEqual(checksum.read_text(), "previous checksum")
+                self.assertFalse(list(self.output.rglob(".packaging-*")))
+
+
+class IconTests(unittest.TestCase):
+    def test_native_mac_icon_has_one_white_plate_and_round_corners_while_ios_is_opaque(self):
+        root = Path(__file__).resolve().parents[1]
+        catalog = root / "Apps/Shared/Assets.xcassets/AppIcon.appiconset"
+        entries = json.loads((catalog / "Contents.json").read_text())["images"]
+        directory = tempfile.TemporaryDirectory(prefix="native icon ")
+        self.addCleanup(directory.cleanup)
+        rendered = Path(directory.name) / "mac-native.png"
+        developer = Path(subprocess.check_output(["xcode-select", "-p"], text=True).strip())
+        composer = developer.parent / "Applications/Icon Composer.app/Contents/Executables/ictool"
+        subprocess.run([str(composer), str(root / "Apps/macOS/MacAppIcon.icon"), "--export-image",
+                        "--output-file", str(rendered), "--platform", "macOS", "--rendition", "Default",
+                        "--width", "256", "--height", "256", "--scale", "1"],
+                       capture_output=True, text=True, check=True)
+        paths = sorted({str(catalog / entry["filename"]) for entry in entries})
+        paths.append(str(rendered))
+        entries.append({"filename": rendered.name, "idiom": "mac", "size": "256x256"})
+        script = r'''
+import CoreGraphics
+import Foundation
+import ImageIO
+var results: [String: Any] = [:]
+for file in CommandLine.arguments.dropFirst() {
+    let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: file) as CFURL, nil)!
+    let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
+    let size = image.width
+    let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
+        bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.draw(image, in: CGRect(x: 0, y: 0, width: size, height: size))
+    let pixels = context.data!.assumingMemoryBound(to: UInt8.self)
+    func pixel(_ x: Int, _ y: Int) -> [Int] {
+        (0..<4).map { Int(pixels[(y * size + x) * 4 + $0]) }
+    }
+    let edge = (0..<size).flatMap { [pixel($0, 0)[3], pixel($0, size - 1)[3],
+                                   pixel(0, $0)[3], pixel(size - 1, $0)[3]] }.max()!
+    let inset = (0..<size).first { pixel($0, size / 2)[3] > 127 }!
+    let corner = Int(Double(size) * 0.13)
+    let hasBlack = (0..<(size * size)).contains { pixels[$0 * 4] < 20 && pixels[$0 * 4 + 3] > 240 }
+    results[URL(fileURLWithPath: file).lastPathComponent] = ["width": size, "height": image.height,
+        "edgeAlpha": edge, "inset": inset, "corner": pixel(corner, corner), "origin": pixel(0, 0),
+        "background": pixel(size / 2, Int(Double(size) * 0.05)), "hasBlack": hasBlack]
+}
+let data = try JSONSerialization.data(withJSONObject: results)
+print(String(data: data, encoding: .utf8)!)
+'''
+        result = subprocess.run(["swift", "-", *paths], input=script, text=True, capture_output=True, check=True)
+        pixels = json.loads(result.stdout)
+        for entry in entries:
+            with self.subTest(entry=entry):
+                icon = pixels[entry["filename"]]
+                size = int(entry["size"].split("x")[0]) * int(entry.get("scale", "1x").rstrip("x"))
+                self.assertEqual((icon["width"], icon["height"]), (size, size))
+                self.assertTrue(icon["hasBlack"])
+                self.assertEqual(icon["edgeAlpha"], 255)
+                if entry["idiom"] == "mac":
+                    self.assertLessEqual(icon["inset"], size * 0.02)
+                    self.assertEqual(icon["origin"][3], 0)
+                    self.assertTrue(all(channel >= 250 for channel in icon["background"]))
+                else:
+                    self.assertEqual(icon["corner"], [255, 255, 255, 255])
 
 
 class GhosttyDependencyTests(unittest.TestCase):

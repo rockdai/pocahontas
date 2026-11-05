@@ -33,6 +33,16 @@ let bounds = shaped.boundingBoxOfPath
 var center = CGAffineTransform(translationX: 512 - bounds.midX, y: 512 - bounds.midY)
 let path = shaped.copy(using: &center)!
 
+func drawGlyph(in context: CGContext) {
+  context.setFillColor(CGColor(gray: 0, alpha: 1))
+  context.setStrokeColor(CGColor(gray: 0, alpha: 1))
+  context.setLineWidth(emboldenWidth)
+  context.setLineJoin(.round)
+  context.setLineCap(.round)
+  context.addPath(path)
+  context.drawPath(using: .fillStroke)
+}
+
 func number(_ value: CGFloat) -> String {
   String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), Double(value))
 }
@@ -51,12 +61,13 @@ path.applyWithBlock { pointer in
   @unknown default: fatalError("Unexpected glyph path element")
   }
 }
+let outline = "<path d=\"\(commands.joined(separator: " "))\" fill=\"#000000\" stroke=\"#000000\" stroke-width=\"\(number(emboldenWidth))\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>"
 let svg = """
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
   <title id="title">pocahontas</title>
   <desc id="description">Black uppercase P on white, using the Contrail One glyph with synthetic bold and 12-degree oblique styling.</desc>
   <rect width="1024" height="1024" fill="#ffffff"/>
-  <path d="\(commands.joined(separator: " "))" fill="#000000" stroke="#000000" stroke-width="\(number(emboldenWidth))" stroke-linejoin="round" stroke-linecap="round"/>
+  \(outline)
 </svg>
 
 """
@@ -71,13 +82,7 @@ context.setFillColor(CGColor(gray: 1, alpha: 1))
 context.fill(CGRect(x: 0, y: 0, width: canvas, height: canvas))
 context.translateBy(x: 0, y: CGFloat(canvas))
 context.scaleBy(x: 1, y: -1)
-context.setFillColor(CGColor(gray: 0, alpha: 1))
-context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-context.setLineWidth(emboldenWidth)
-context.setLineJoin(.round)
-context.setLineCap(.round)
-context.addPath(path)
-context.drawPath(using: .fillStroke)
+drawGlyph(in: context)
 guard let rendered = context.makeImage(),
   let destination = CGImageDestinationCreateWithURL(
     directory.appendingPathComponent("pocahontas.png") as CFURL, "public.png" as CFString, 1, nil)
@@ -96,26 +101,30 @@ func writeJSON(_ value: [String: Any], to url: URL) throws {
   try data.write(to: url, options: .atomic)
 }
 try writeJSON(["info": info], to: catalog.appendingPathComponent("Contents.json"))
-var images: [[String: String]] = [["filename": "icon-1024.png", "idiom": "universal",
+let images: [[String: String]] = [["filename": "icon-1024.png", "idiom": "universal",
   "platform": "ios", "size": "1024x1024"]]
-for size in [16, 32, 128, 256, 512] {
-  for scale in [1, 2] {
-    images.append(["filename": "icon-\(size * scale).png", "idiom": "mac",
-      "size": "\(size)x\(size)", "scale": "\(scale)x"])
-  }
-}
 try writeJSON(["images": images, "info": info], to: icons.appendingPathComponent("Contents.json"))
-for size in [16, 32, 64, 128, 256, 512, 1024] {
-  guard let scaled = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
-    bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
-    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-  else { fatalError("Unable to create the \(size) px icon canvas") }
-  scaled.interpolationQuality = .high
-  scaled.draw(rendered, in: CGRect(x: 0, y: 0, width: size, height: size))
-  guard let icon = scaled.makeImage(), let output = CGImageDestinationCreateWithURL(
-    icons.appendingPathComponent("icon-\(size).png") as CFURL, "public.png" as CFString, 1, nil)
-  else { fatalError("Unable to create the \(size) px icon output") }
-  CGImageDestinationAddImage(output, icon, nil)
-  guard CGImageDestinationFinalize(output) else { fatalError("Unable to write the \(size) px icon") }
-}
-print("Generated the shared iPhone, iPad and Mac AppIcon asset catalog.")
+try Data(contentsOf: directory.appendingPathComponent("pocahontas.png")).write(
+  to: icons.appendingPathComponent("icon-1024.png"), options: .atomic)
+
+let document = root.appendingPathComponent("Apps/macOS/MacAppIcon.icon")
+let artwork = document.appendingPathComponent("Assets")
+try FileManager.default.createDirectory(at: artwork, withIntermediateDirectories: true)
+let foreground = """
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  \(outline)
+</svg>
+
+"""
+try foreground.write(to: artwork.appendingPathComponent("P.svg"), atomically: true, encoding: .utf8)
+try writeJSON([
+  "color-space-for-untagged-svg-colors": "display-p3",
+  "fill": ["solid": "srgb:1.00000,1.00000,1.00000,1.00000"],
+  "groups": [[
+    "name": "P", "layers": [["image-name": "P.svg", "name": "P", "glass": false]],
+    "shadow": ["kind": "neutral", "opacity": 0], "specular": false,
+    "translucency": ["enabled": false, "value": 0]
+  ]],
+  "supported-platforms": ["squares": "shared"]
+], to: document.appendingPathComponent("icon.json"))
+print("Generated the iPhone/iPad AppIcon catalog and native macOS Icon Composer document.")
