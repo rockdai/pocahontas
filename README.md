@@ -42,7 +42,7 @@ scripts/generate-project.sh
 open pocahontas.xcodeproj
 ```
 
-在 Xcode 选择 `pocahontas` scheme 运行 iPhone / iPad，选择 `pocahontas-macOS` scheme 和 My Mac 运行原生 Mac App。Mac Debug 使用本地 ad-hoc 签名；发布构建需选择开发团队及正式签名。Mac 主机指纹保存在本机 login Keychain（仅本机信任，不同步）；正式签名保证应用身份在升级后保持稳定。模拟器使用专用 ad-hoc 签名 entitlement 访问真实 Keychain，无需设置开发团队。真机需在 Signing & Capabilities 中选择自己的团队。不要用 `CODE_SIGNING_ALLOWED=NO` 运行 Keychain 集成测试。
+在 Xcode 选择 `pocahontas` scheme 运行 iPhone / iPad，选择 `pocahontas-macOS` scheme 和 My Mac 运行原生 Mac App。Mac Debug 使用本地 ad-hoc 签名和独立的 bundle ID `com.rockdai.pocahontas.mac.debug`，沙盒容器与已安装的正式版互不影响；发布构建需选择开发团队及正式签名。Mac 主机指纹保存在本机 login Keychain（仅本机信任，不同步）；正式签名保证应用身份在升级后保持稳定。模拟器使用专用 ad-hoc 签名 entitlement 访问真实 Keychain，无需设置开发团队。真机需在 Signing & Capabilities 中选择自己的团队。不要用 `CODE_SIGNING_ALLOWED=NO` 运行 Keychain 集成测试。
 
 `project.yml` 是工程配置源；重新生成工程使用 `scripts/generate-project.sh`，该脚本同时将已提交的 Swift package 版本锁复制到 Xcode。Ghostty 构建产物位于 `Frameworks/`，不入库；构建脚本只修改项目内的 Zig 缓存。
 
@@ -95,6 +95,14 @@ scripts/test-macos.sh
 ```
 
 该脚本在随机 loopback 端口运行专用 fixture；每次新端点都验证首次信任，不清除已有主机指纹。M0 阶段 Mac XCUITest 曾发生自动化启动超时，历史截图使用实际窗口操作。本轮多会话的 Mac XCTest 与 XCUITest 已通过，可用 `scripts/test-session-macos.sh` 重跑并导出多会话截图。
+
+iPhone 模拟器的单元 / UI 测试和 Mac 原生单元测试可一次运行，不需要活跃显示器，也不改动截图；有测试被跳过时脚本判为失败：
+
+```sh
+scripts/test-native.sh
+```
+
+`Build macOS` 工作流在签名前依次运行打包逻辑、SSH、账号和上述原生测试，任何一项失败都不会产出签名构建。Mac XCUITest 需要 macOS Automation Mode，默认要求交互认证，无人值守时无法完成，因此不在 CI 中；需要时由管理员在该机器上执行一次 `sudo automationmodetool enable-automationmode-without-authentication`，这会允许 UI 自动化无需认证即可控制该机器。
 
 ## 设计与集成记录
 
