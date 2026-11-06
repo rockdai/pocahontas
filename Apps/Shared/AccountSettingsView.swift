@@ -106,9 +106,6 @@ struct AccountSettingsView: View {
         Text("Use at least 15 characters.").font(.caption).foregroundStyle(.secondary)
         SecureField("Confirm password", text: $confirmation).textContentType(.newPassword)
           .accessibilityIdentifier("account.confirm").focused($focusedField, equals: .confirmation)
-        if !confirmation.isEmpty && password != confirmation {
-          Text("Passwords do not match.").foregroundStyle(AppAppearance.warning)
-        }
         HStack {
           TextField("8-digit email code", text: $code).textContentType(.oneTimeCode)
             .accessibilityIdentifier("account.code")
@@ -134,6 +131,10 @@ struct AccountSettingsView: View {
         else { resetConfirmation = true }
       }.buttonStyle(.borderedProminent)
         .disabled(!canSubmit).accessibilityIdentifier("account.submit")
+      if library.serverConfigured, let validationMessage {
+        Text(validationMessage).font(.caption).foregroundStyle(AppAppearance.warning)
+          .accessibilityIdentifier("account.validation")
+      }
       if !library.serverConfigured { Text(AccountError.notConfigured.localizedDescription).font(.caption) }
       if busy || library.isAccountBusy { ProgressView() }
     }.disabled(busy || library.isAccountBusy)
@@ -177,16 +178,27 @@ struct AccountSettingsView: View {
     }.disabled(busy || library.isAccountBusy)
   }
   private var canSubmit: Bool {
-    guard library.serverConfigured, !busy, !library.isAccountBusy, !email.isEmpty, !password.isEmpty else { return false }
-    if mode == "Sign In" { return true }
-    return password == confirmation && (try? AccountCrypto.validatePassword(password)) != nil
-      && codeId != nil && codeEmail == email && code.count == 8
+    library.serverConfigured && !busy && !library.isAccountBusy && validationMessage == nil
+  }
+  private var normalizedCode: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
+  private var validationMessage: String? {
+    if email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Enter your email address." }
+    if password.isEmpty { return "Enter your password." }
+    if mode == "Sign In" { return nil }
+    do { try AccountCrypto.validatePassword(password) } catch { return error.localizedDescription }
+    if confirmation.isEmpty { return "Confirm your password." }
+    if password != confirmation { return "Passwords do not match." }
+    if codeId == nil || codeEmail != email { return "Select Send Code to get a verification code for this email." }
+    if normalizedCode.utf8.count != 8 || !normalizedCode.utf8.allSatisfy({ (48...57).contains($0) }) {
+      return "Enter the 8-digit code from your email."
+    }
+    return nil
   }
   private func submit(reset: Bool) {
-    guard let codeId else { return }
+    guard canSubmit, let codeId else { return }
     run {
       try await library.registerOrReset(email: email, password: password, codeId: codeId,
-        code: code, reset: reset, confirmDelete: reset)
+        code: normalizedCode, reset: reset, confirmDelete: reset)
       clearForm()
     }
   }
