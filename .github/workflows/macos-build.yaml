@@ -31,10 +31,21 @@ jobs:
           submodules: true
           clean: true
 
-      - name: Run unit tests
+      - name: Run unit and integration tests
         run: |
-          swift test --package-path Packages/PocahontasKit -j 4 --skip IntegrationTests
+          export PATH="/opt/homebrew/bin:$PATH"
           python3 -m unittest discover -s scripts -p 'test_package_macos.py'
+          python3 -m venv .build/test-venv
+          .build/test-venv/bin/pip install -r scripts/requirements-test.txt
+          scripts/test-ssh.sh
+          npm ci --prefix server --ignore-scripts
+          scripts/test-account.sh
+
+      - name: Run native tests
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH"
+          scripts/build-ghostty.sh
+          scripts/test-native.sh
 
       - name: Build, sign and notarize
         run: |

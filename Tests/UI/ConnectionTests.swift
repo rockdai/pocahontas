@@ -8,7 +8,9 @@ final class ConnectionTests: XCTestCase {
     let host = app.textFields["connection.host"]
     XCTAssertTrue(host.waitForExistence(timeout: 10))
     replace(host, with: "127.0.0.1")
-    replace(app.textFields["connection.port"], with: "62223")
+    replace(
+      app.textFields["connection.port"],
+      with: ProcessInfo.processInfo.environment["POCAHONTAS_SESSION_TEST_PORT"] ?? "62223")
     replace(app.textFields["connection.username"], with: "fixture")
     let password = app.secureTextFields["connection.password"]
     password.tap()

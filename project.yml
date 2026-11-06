@@ -91,6 +91,8 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY: "-"
+          # The sandbox pins a container to its first signer; a shared ID hangs ad-hoc builds at launch.
+          PRODUCT_BUNDLE_IDENTIFIER: com.rockdai.pocahontas.mac.debug
     info:
       path: Apps/macOS/Info.plist
       properties:

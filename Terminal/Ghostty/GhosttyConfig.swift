@@ -1,6 +1,10 @@
 import Foundation
 import GhosttyKit
 
+#if os(macOS)
+  import CoreGraphics
+#endif
+
 final class GhosttyConfig {
   let handle: ghostty_config_t
   init() {
@@ -44,6 +48,9 @@ final class GhosttyConfig {
     #if os(macOS)
     // AppKit owns application shortcuts. Option is the terminal's Alt modifier.
     text += "\nkeybind = clear\nmacos-option-as-alt = true\n"
+    var activeDisplays: UInt32 = 0
+    CGGetActiveDisplayList(0, nil, &activeDisplays)
+    text += Self.displayOptions(activeDisplays: activeDisplays)
     #endif
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "pocahontas-ghostty.conf")
@@ -55,4 +62,11 @@ final class GhosttyConfig {
     ghostty_config_finalize(handle)
   }
   deinit { ghostty_config_free(handle) }
+
+  #if os(macOS)
+  // Vsync needs a CVDisplayLink, so surfaces fail to start on a closed or headless Mac.
+  static func displayOptions(activeDisplays: UInt32) -> String {
+    activeDisplays == 0 ? "window-vsync = false\n" : ""
+  }
+  #endif
 }

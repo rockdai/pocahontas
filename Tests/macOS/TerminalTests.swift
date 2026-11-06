@@ -97,6 +97,12 @@ final class TerminalTests: XCTestCase {
     XCTAssertFalse(second.surface.selectionText?.contains("first window") == true)
   }
 
+  func testVsyncStaysOnUnlessNoDisplayIsActive() {
+    XCTAssertEqual(GhosttyConfig.displayOptions(activeDisplays: 0), "window-vsync = false\n")
+    XCTAssertEqual(GhosttyConfig.displayOptions(activeDisplays: 1), "")
+    XCTAssertEqual(GhosttyConfig.displayOptions(activeDisplays: 2), "")
+  }
+
   func testHostTrustPersistsInRealMacKeychain() throws {
     let host = "pocahontas-test-\(UUID().uuidString):22"
     let store = KeychainKnownHosts()

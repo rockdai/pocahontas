@@ -12,7 +12,8 @@ export async function database() {
   const directory = mkdtempSync(join(tmpdir(), 'pocahontas-pg-'));
   const data = join(directory, 'data');
   const command = name => process.env.PG_BIN ? join(process.env.PG_BIN, name) : name;
-  const run = (name, args) => execFileSync(command(name), args, { stdio: 'pipe' });
+  // macOS postgres aborts startup when libintl has to discover an unset locale.
+  const run = (name, args) => execFileSync(command(name), args, { stdio: 'pipe', env: { ...process.env, LC_ALL: 'C' } });
   let started = false, pool;
   try {
     run('initdb', ['-D', data, '-A', 'trust', '--no-locale', '-E', 'UTF8']);
